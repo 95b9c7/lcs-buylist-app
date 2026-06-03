@@ -13,6 +13,11 @@ urlpatterns = [
     path('customers/new/', views.customer_create, name='customer_create'),
     path('customers/<int:pk>/', views.customer_detail, name='customer_detail'),
     path('buylists/new/', views.buylist_create, name='buylist_create'),
+    path(
+        'buylists/export-csv/',
+        views.buylist_bulk_export_csv,
+        name='buylist_bulk_export_csv',
+    ),
     path('buylists/<int:pk>/', views.buylist_detail, name='buylist_detail'),
     path(
         'buylists/<int:pk>/offer-sheet/',

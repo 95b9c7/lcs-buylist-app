@@ -175,9 +175,16 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3 d-flex gap-2">
+            <div class="col-md-3 d-flex gap-2 flex-wrap">
                 <button type="submit" class="btn btn-primary">Search</button>
                 <a href="{% url 'buylists:dashboard' %}" class="btn btn-outline-secondary">Clear</a>
+                <button
+                    type="submit"
+                    class="btn btn-outline-secondary"
+                    formaction="{% url 'buylists:buylist_bulk_export_csv' %}"
+                >
+                    Export CSV
+                </button>
             </div>
         </div>
     </div>

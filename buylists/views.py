@@ -158,11 +158,7 @@ def dashboard(request):
     search_query = request.GET.get('q', '').strip()
     status_filter = request.GET.get('status', '').strip()
 
-    if search_query:
-        buylists = buylists.filter(customer__name__icontains=search_query)
-
-    if status_filter:
-        buylists = buylists.filter(status=status_filter)
+    buylists = _apply_buylist_filters(buylists, search_query, status_filter)
 
     buylists = buylists[:50]
 
@@ -177,6 +173,16 @@ def dashboard(request):
         context.update(_owner_dashboard_context())
 
     return render(request, 'buylists/dashboard.html', context)
+
+
+def _apply_buylist_filters(queryset, search_query, status_filter):
+    if search_query:
+        queryset = queryset.filter(customer__name__icontains=search_query)
+
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+
+    return queryset
 
 
 @employee_required
@@ -305,6 +311,124 @@ def buylist_detail(request, pk):
     })
 
 
+BUYLIST_ITEM_CSV_HEADERS = [
+    'Buylist ID',
+    'Customer Name',
+    'Card Name',
+    'Set Name',
+    'Quantity',
+    'Condition',
+    'Market Price',
+    'Offer Percent',
+    'Recommended Offer Price',
+    'Final Offer Price',
+    'Override Reason',
+    'Override Recommended',
+    'Override Final',
+    'Override By',
+    'Override At',
+    'Notes',
+]
+
+BULK_BUYLIST_CSV_HEADERS = [
+    'Buylist ID',
+    'Customer Name',
+    'Buylist Status',
+    'Payment Choice',
+    'Payment Method',
+    'Amount Paid',
+    'Paid At',
+    'Created At',
+    'Updated At',
+    'Total Market Value',
+    'Total Offer Value',
+    'Card Name',
+    'Set Name',
+    'Quantity',
+    'Condition',
+    'Market Price',
+    'Offer Percent',
+    'Recommended Offer Price',
+    'Final Offer Price',
+    'Override Reason',
+    'Override Recommended',
+    'Override Final',
+    'Override By',
+    'Override At',
+    'Notes',
+]
+
+
+def _format_offer_percent(item):
+    if item.offer_percent is None:
+        return ''
+    return int(item.offer_percent * 100)
+
+
+def _buylist_item_csv_values(item):
+    return [
+        item.card_name,
+        item.set_name,
+        item.quantity,
+        item.condition,
+        item.market_price,
+        _format_offer_percent(item),
+        item.recommended_offer_price,
+        item.final_offer_price,
+        item.override_reason,
+        item.override_recommended_price,
+        item.override_final_price,
+        item.override_by.username if item.override_by else '',
+        item.override_at,
+        item.notes,
+    ]
+
+
+def _write_buylist_item_csv_rows(writer, buylist):
+    writer.writerow(BUYLIST_ITEM_CSV_HEADERS)
+    for item in buylist.items.all():
+        writer.writerow([
+            buylist.pk,
+            buylist.customer.name,
+            *_buylist_item_csv_values(item),
+        ])
+
+
+def _bulk_buylist_csv_prefix(buylist):
+    return [
+        buylist.pk,
+        buylist.customer.name,
+        buylist.get_status_display(),
+        buylist.get_payment_choice_display(),
+        buylist.get_payment_method_display(),
+        buylist.amount_paid,
+        buylist.paid_at,
+        buylist.created_at,
+        buylist.updated_at,
+        buylist.total_market_value,
+        buylist.total_offer_value,
+    ]
+
+
+def _write_bulk_buylist_csv_rows(writer, buylists):
+    writer.writerow(BULK_BUYLIST_CSV_HEADERS)
+    empty_item_values = [''] * (len(BULK_BUYLIST_CSV_HEADERS) - 11)
+    for buylist in buylists:
+        items = list(buylist.items.all())
+        if not items:
+            writer.writerow([
+                *_bulk_buylist_csv_prefix(buylist),
+                *empty_item_values,
+            ])
+            continue
+
+        for item in items:
+            writer.writerow([
+                *_bulk_buylist_csv_prefix(buylist),
+                *_buylist_item_csv_values(item),
+            ])
+
+
 @employee_required
 def buylist_export_csv(request, pk):
     buylist = get_object_or_404(
@@ -324,48 +448,7 @@ def buylist_export_csv(request, pk):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
     writer = csv.writer(response)
-    writer.writerow([
-        'Buylist ID',
-        'Customer Name',
-        'Card Name',
-        'Set Name',
-        'Quantity',
-        'Condition',
-        'Market Price',
-        'Offer Percent',
-        'Recommended Offer Price',
-        'Final Offer Price',
-        'Override Reason',
-        'Override Recommended',
-        'Override Final',
-        'Override By',
-        'Override At',
-        'Notes',
-    ])
-
-    for item in buylist.items.all():
-        if item.offer_percent is not None:
-            offer_percent = int(item.offer_percent * 100)
-        else:
-            offer_percent = ''
-        writer.writerow([
-            buylist.pk,
-            buylist.customer.name,
-            item.card_name,
-            item.set_name,
-            item.quantity,
-            item.condition,
-            item.market_price,
-            offer_percent,
-            item.recommended_offer_price,
-            item.final_offer_price,
-            item.override_reason,
-            item.override_recommended_price,
-            item.override_final_price,
-            item.override_by.username if item.override_by else '',
-            item.override_at,
-            item.notes,
-        ])
+    _write_buylist_item_csv_rows(writer, buylist)
 
     log_buylist_activity(
         buylist,
@@ -373,6 +456,28 @@ def buylist_export_csv(request, pk):
         BuylistActivity.ACTION_CSV_EXPORTED,
         f'Exported buylist #{buylist.pk} to CSV.',
     )
+    return response
+
+
+@employee_required
+def buylist_bulk_export_csv(request):
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+    buylists = (
+        Buylist.objects.select_related('customer')
+        .prefetch_related('items__override_by')
+        .order_by('-created_at', '-pk')
+    )
+    buylists = _apply_buylist_filters(buylists, search_query, status_filter)
+
+    export_date = timezone.localdate().strftime('%Y%m%d')
+    filename = f'buylists_export_{export_date}.csv'
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    _write_bulk_buylist_csv_rows(writer, buylists)
     return response
 
 
