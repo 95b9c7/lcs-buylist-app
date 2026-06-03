@@ -39,6 +39,11 @@ class Buylist(models.Model):
         (STATUS_REJECTED, 'Rejected'),
         (STATUS_PAID, 'Paid'),
     ]
+    TERMINAL_STATUSES = {
+        STATUS_ACCEPTED,
+        STATUS_REJECTED,
+        STATUS_PAID,
+    }
 
     PAYMENT_CASH = 'cash'
     PAYMENT_TRADE = 'trade'
@@ -53,6 +58,13 @@ class Buylist(models.Model):
         Customer,
         on_delete=models.CASCADE,
         related_name='buylists',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='buylists_created',
     )
     status = models.CharField(
         max_length=20,
@@ -99,6 +111,14 @@ class Buylist(models.Model):
         blank=True,
         related_name='buylists_paid',
     )
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='buylists_completed',
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
     unlock_reason = models.TextField(blank=True)
     unlocked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
