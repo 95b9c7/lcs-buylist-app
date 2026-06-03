@@ -17,8 +17,29 @@ from .models import Buylist, BuylistItem, Customer
 
 
 def dashboard(request):
-    buylists = Buylist.objects.select_related('customer')[:20]
-    return render(request, 'buylists/dashboard.html', {'buylists': buylists})
+    buylists = (
+        Buylist.objects.select_related('customer')
+        .prefetch_related('items')
+        .order_by('-created_at')
+    )
+
+    search_query = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+
+    if search_query:
+        buylists = buylists.filter(customer__name__icontains=search_query)
+
+    if status_filter:
+        buylists = buylists.filter(status=status_filter)
+
+    buylists = buylists[:50]
+
+    return render(request, 'buylists/dashboard.html', {
+        'buylists': buylists,
+        'search_query': search_query,
+        'status_filter': status_filter,
+        'status_choices': Buylist.STATUS_CHOICES,
+    })
 
 
 def customer_list(request):
