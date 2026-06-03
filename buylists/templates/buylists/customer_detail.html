@@ -1,0 +1,75 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}{{ customer.name }} — Customer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1 class="h2 mb-1">{{ customer.name }}</h1>
+        <p class="text-muted mb-0">Customer history</p>
+    </div>
+    <a href="{% url 'buylists:buylist_create' %}?customer={{ customer.pk }}" class="btn btn-primary">New Buylist</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5 card-title">Customer info</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Phone</dt>
+            <dd class="col-sm-9">{{ customer.phone|default:"—" }}</dd>
+            <dt class="col-sm-3">Email</dt>
+            <dd class="col-sm-9">{{ customer.email|default:"—" }}</dd>
+            <dt class="col-sm-3">Total offered</dt>
+            <dd class="col-sm-9 fw-semibold">${{ total_offered|floatformat:2 }}</dd>
+            {% if customer.notes %}
+            <dt class="col-sm-3">Notes</dt>
+            <dd class="col-sm-9">{{ customer.notes }}</dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+
+<h2 class="h5 mb-3">Buylist history</h2>
+
+{% if buylists %}
+<div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>Buylist ID</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th class="text-end">Total Market</th>
+                <th class="text-end">Total Final Offer</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for buylist in buylists %}
+            <tr>
+                <td>#{{ buylist.pk }}</td>
+                <td>
+                    <span class="badge bg-secondary">{{ buylist.get_status_display }}</span>
+                </td>
+                <td>{{ buylist.created_at|date:"M j, Y" }}</td>
+                <td class="text-end">${{ buylist.total_market_value }}</td>
+                <td class="text-end">${{ buylist.total_final_offer_value }}</td>
+                <td class="text-end">
+                    <a href="{% url 'buylists:buylist_detail' pk=buylist.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    No buylists for this customer yet.
+    <a href="{% url 'buylists:buylist_create' %}?customer={{ customer.pk }}">Start their first buylist</a>.
+</div>
+{% endif %}
+
+<p class="mt-4">
+    <a href="{% url 'buylists:customer_list' %}" class="btn btn-outline-secondary">← Back to Customers</a>
+</p>
+{% endblock %}

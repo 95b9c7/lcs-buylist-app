@@ -1,7 +1,10 @@
 import csv
 import re
+from decimal import Decimal
 
 from django.contrib import messages
+from django.db.models import Count, DecimalField, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -13,7 +16,7 @@ from .forms import (
     BuylistStatusForm,
     CustomerForm,
 )
-from .models import Buylist, BuylistItem, Customer
+from .models import Buylist, BuylistItem, Customer, round_money
 
 
 def dashboard(request):
@@ -43,8 +46,51 @@ def dashboard(request):
 
 
 def customer_list(request):
-    customers = Customer.objects.all()
-    return render(request, 'buylists/customer_list.html', {'customers': customers})
+    customers = (
+        Customer.objects.annotate(
+            buylist_count=Count('buylists', distinct=True),
+            total_offered=Coalesce(
+                Sum('buylists__items__final_offer_price'),
+                Value(Decimal('0.00')),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+        )
+        .order_by('name')
+    )
+
+    search_query = request.GET.get('q', '').strip()
+    if search_query:
+        customers = customers.filter(
+            Q(name__icontains=search_query)
+            | Q(phone__icontains=search_query)
+            | Q(email__icontains=search_query)
+        )
+
+    # Sum() in SQLite can return extra decimal places (e.g. 12.6000000000000).
+    for customer in customers:
+        customer.total_offered = round_money(customer.total_offered)
+
+    return render(request, 'buylists/customer_list.html', {
+        'customers': customers,
+        'search_query': search_query,
+    })
+
+
+def customer_detail(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+    buylists = (
+        Buylist.objects.filter(customer=customer)
+        .prefetch_related('items')
+        .order_by('-created_at')
+    )
+    total_offered = round_money(
+        sum(buylist.total_final_offer_value for buylist in buylists)
+    )
+    return render(request, 'buylists/customer_detail.html', {
+        'customer': customer,
+        'buylists': buylists,
+        'total_offered': total_offered,
+    })
 
 
 def customer_create(request):
@@ -53,7 +99,7 @@ def customer_create(request):
         if form.is_valid():
             customer = form.save()
             messages.success(request, f'Customer "{customer.name}" created.')
-            return redirect('buylists:customer_list')
+            return redirect('buylists:customer_detail', pk=customer.pk)
     else:
         form = CustomerForm()
     return render(request, 'buylists/customer_form.html', {
@@ -63,6 +109,11 @@ def customer_create(request):
 
 
 def buylist_create(request):
+    customer = None
+    customer_pk = request.GET.get('customer')
+    if customer_pk:
+        customer = get_object_or_404(Customer, pk=customer_pk)
+
     if request.method == 'POST':
         form = BuylistForm(request.POST)
         if form.is_valid():
@@ -70,10 +121,13 @@ def buylist_create(request):
             messages.success(request, 'Buylist created.')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
-        form = BuylistForm()
+        initial = {'customer': customer} if customer else None
+        form = BuylistForm(initial=initial)
+
     return render(request, 'buylists/buylist_form.html', {
         'form': form,
         'title': 'New Buylist',
+        'customer': customer,
     })
 
 

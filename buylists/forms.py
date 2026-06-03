@@ -3,7 +3,7 @@ from decimal import Decimal
 from django import forms
 from django.utils import timezone
 
-from .models import Buylist, BuylistItem, Customer
+from .models import Buylist, BuylistItem, Customer, round_money
 from .offer_rules import get_role_label, validate_final_offer
 
 
@@ -113,7 +113,8 @@ class BuylistItemForm(BootstrapFormMixin, forms.ModelForm):
 
         item = self._build_item_for_recommended(cleaned)
         recommended = item.calculate_recommended_offer_price()
-        final = cleaned.get('final_offer_price')
+        final = round_money(cleaned.get('final_offer_price'))
+        cleaned['final_offer_price'] = final
         override_reason = cleaned.get('override_reason', '')
 
         for error in validate_final_offer(

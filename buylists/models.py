@@ -3,6 +3,13 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+MONEY_PRECISION = Decimal('0.01')
+
+
+def round_money(amount):
+    """Round a money value to the nearest cent (hundredths place)."""
+    return Decimal(amount).quantize(MONEY_PRECISION)
+
 
 class Customer(models.Model):
     name = models.CharField(max_length=200)
@@ -68,23 +75,25 @@ class Buylist(models.Model):
 
     @property
     def total_market_value(self):
-        return sum(item.line_market_value for item in self.items.all())
+        return round_money(sum(item.line_market_value for item in self.items.all()))
 
     @property
     def total_cash_offer_value(self):
-        return sum(item.cash_offer_price for item in self.items.all())
+        return round_money(sum(item.cash_offer_price for item in self.items.all()))
 
     @property
     def total_trade_offer_value(self):
-        return sum(item.trade_offer_price for item in self.items.all())
+        return round_money(sum(item.trade_offer_price for item in self.items.all()))
 
     @property
     def total_recommended_offer_value(self):
-        return sum(item.recommended_offer_price for item in self.items.all())
+        return round_money(
+            sum(item.recommended_offer_price for item in self.items.all())
+        )
 
     @property
     def total_final_offer_value(self):
-        return sum(item.final_offer_price for item in self.items.all())
+        return round_money(sum(item.final_offer_price for item in self.items.all()))
 
     @property
     def payment_choice_selected(self):
@@ -176,7 +185,7 @@ class BuylistItem(models.Model):
 
     @property
     def line_market_value(self):
-        return Decimal(self.quantity) * self.market_price
+        return round_money(Decimal(self.quantity) * self.market_price)
 
     @property
     def offer_percent(self):
@@ -206,18 +215,14 @@ class BuylistItem(models.Model):
         )
 
     def calculate_cash_offer_price(self):
-        return (
-            self._base_offer_value() * self.CASH_OFFER_PERCENT
-        ).quantize(Decimal('0.01'))
+        return round_money(self._base_offer_value() * self.CASH_OFFER_PERCENT)
 
     def calculate_trade_offer_price(self):
-        return (
-            self._base_offer_value() * self.TRADE_OFFER_PERCENT
-        ).quantize(Decimal('0.01'))
+        return round_money(self._base_offer_value() * self.TRADE_OFFER_PERCENT)
 
     def calculate_recommended_offer_price(self):
         offer_percent = self.get_offer_percent_for_buylist(self.buylist)
-        return (self._base_offer_value() * offer_percent).quantize(Decimal('0.01'))
+        return round_money(self._base_offer_value() * offer_percent)
 
     def save(self, *args, **kwargs):
         self.cash_offer_price = self.calculate_cash_offer_price()
@@ -226,6 +231,8 @@ class BuylistItem(models.Model):
 
         if self._state.adding:
             self.final_offer_price = self.recommended_offer_price
+        else:
+            self.final_offer_price = round_money(self.final_offer_price)
 
         super().save(*args, **kwargs)
 

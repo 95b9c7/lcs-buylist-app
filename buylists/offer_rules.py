@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from .models import round_money
+
 GROUP_MANAGER = 'Manager'
 GROUP_OWNER = 'Owner'
 GROUP_ADMIN = 'Admin'
@@ -45,7 +47,7 @@ def max_allowed_final_offer(recommended, user):
     if limit_percent is None:
         return None
     multiplier = Decimal('1') + (limit_percent / Decimal('100'))
-    return (recommended * multiplier).quantize(Decimal('0.01'))
+    return round_money(recommended * multiplier)
 
 
 def validate_final_offer(user, recommended, final, override_reason):

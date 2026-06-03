@@ -3,7 +3,12 @@
 {% block title %}{{ title }} — LCS Buylist{% endblock %}
 
 {% block content %}
-<h1 class="h2 mb-4">{{ title }}</h1>
+<h1 class="h2 mb-1">{{ title }}</h1>
+{% if customer %}
+<p class="text-muted mb-4">For {{ customer.name }}</p>
+{% else %}
+<p class="mb-4"></p>
+{% endif %}
 
 <form method="post" novalidate>
     {% csrf_token %}
@@ -21,6 +26,10 @@
     {% endfor %}
     <p class="text-muted small">Don't see the customer? <a href="{% url 'buylists:customer_create' %}">Create one first</a>.</p>
     <button type="submit" class="btn btn-primary">Create Buylist</button>
+    {% if customer %}
+    <a href="{% url 'buylists:customer_detail' pk=customer.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    {% else %}
     <a href="{% url 'buylists:dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
+    {% endif %}
 </form>
 {% endblock %}
