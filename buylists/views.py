@@ -1,4 +1,8 @@
+import csv
+import re
+
 from django.contrib import messages
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -64,6 +68,58 @@ def buylist_detail(request, pk):
         'status_form': status_form,
         'payment_form': payment_form,
     })
+
+
+def buylist_export_csv(request, pk):
+    buylist = get_object_or_404(
+        Buylist.objects.select_related('customer').prefetch_related('items'),
+        pk=pk,
+    )
+    safe_customer_name = re.sub(
+        r'[^\w\-_]',
+        '',
+        buylist.customer.name.replace(' ', '_'),
+    ) or 'customer'
+    filename = f'buylist_{buylist.pk}_customer_{safe_customer_name}.csv'
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        'Buylist ID',
+        'Customer Name',
+        'Card Name',
+        'Set Name',
+        'Quantity',
+        'Condition',
+        'Market Price',
+        'Offer Percent',
+        'Offer Price',
+        'Notes',
+    ])
+
+    for item in buylist.items.all():
+        if item.offer_percent is not None:
+            offer_percent = int(item.offer_percent * 100)
+        else:
+            offer_percent = ''
+        offer_price = item.offer_price if item.offer_price is not None else ''
+
+        writer.writerow([
+            buylist.pk,
+            buylist.customer.name,
+            item.card_name,
+            item.set_name,
+            item.quantity,
+            item.condition,
+            item.market_price,
+            offer_percent,
+            offer_price,
+            item.notes,
+        ])
+
+    return response
 
 
 def buylist_offer_sheet(request, pk):

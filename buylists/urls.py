@@ -16,6 +16,11 @@ urlpatterns = [
         name='buylist_offer_sheet',
     ),
     path(
+        'buylists/<int:pk>/export-csv/',
+        views.buylist_export_csv,
+        name='buylist_export_csv',
+    ),
+    path(
         'buylists/<int:pk>/status/',
         views.buylist_update_status,
         name='buylist_update_status',

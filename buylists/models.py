@@ -158,6 +158,15 @@ class BuylistItem(models.Model):
         return Decimal(self.quantity) * self.market_price
 
     @property
+    def offer_percent(self):
+        choice = self.buylist.payment_choice
+        if choice == Buylist.PAYMENT_CASH:
+            return self.CASH_OFFER_PERCENT
+        if choice == Buylist.PAYMENT_TRADE:
+            return self.TRADE_OFFER_PERCENT
+        return None
+
+    @property
     def offer_price(self):
         choice = self.buylist.payment_choice
         if choice == Buylist.PAYMENT_CASH:
