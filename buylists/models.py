@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 
@@ -78,16 +79,21 @@ class Buylist(models.Model):
         return sum(item.trade_offer_price for item in self.items.all())
 
     @property
+    def total_recommended_offer_value(self):
+        return sum(item.recommended_offer_price for item in self.items.all())
+
+    @property
+    def total_final_offer_value(self):
+        return sum(item.final_offer_price for item in self.items.all())
+
+    @property
     def payment_choice_selected(self):
         return bool(self.payment_choice)
 
     @property
     def total_offer_value(self):
-        if self.payment_choice == self.PAYMENT_CASH:
-            return self.total_cash_offer_value
-        if self.payment_choice == self.PAYMENT_TRADE:
-            return self.total_trade_offer_value
-        return None
+        """Totals use the employee-approved final offer."""
+        return self.total_final_offer_value
 
 
 class BuylistItem(models.Model):
@@ -141,6 +147,21 @@ class BuylistItem(models.Model):
         decimal_places=2,
         editable=False,
     )
+    recommended_offer_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        editable=False,
+    )
+    final_offer_price = models.DecimalField(max_digits=10, decimal_places=2)
+    override_reason = models.TextField(blank=True)
+    override_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='offer_overrides',
+    )
+    override_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
 
     class Meta:
@@ -159,21 +180,23 @@ class BuylistItem(models.Model):
 
     @property
     def offer_percent(self):
-        choice = self.buylist.payment_choice
-        if choice == Buylist.PAYMENT_CASH:
-            return self.CASH_OFFER_PERCENT
-        if choice == Buylist.PAYMENT_TRADE:
-            return self.TRADE_OFFER_PERCENT
-        return None
+        return self.get_offer_percent_for_buylist(self.buylist)
+
+    @classmethod
+    def get_offer_percent_for_buylist(cls, buylist):
+        if buylist.payment_choice == Buylist.PAYMENT_CASH:
+            return cls.CASH_OFFER_PERCENT
+        if buylist.payment_choice == Buylist.PAYMENT_TRADE:
+            return cls.TRADE_OFFER_PERCENT
+        return cls.TRADE_OFFER_PERCENT
 
     @property
     def offer_price(self):
-        choice = self.buylist.payment_choice
-        if choice == Buylist.PAYMENT_CASH:
-            return self.cash_offer_price
-        if choice == Buylist.PAYMENT_TRADE:
-            return self.trade_offer_price
-        return None
+        return self.final_offer_price
+
+    @property
+    def is_offer_overridden(self):
+        return self.final_offer_price > self.recommended_offer_price
 
     def _base_offer_value(self):
         return (
@@ -192,7 +215,16 @@ class BuylistItem(models.Model):
             self._base_offer_value() * self.TRADE_OFFER_PERCENT
         ).quantize(Decimal('0.01'))
 
+    def calculate_recommended_offer_price(self):
+        offer_percent = self.get_offer_percent_for_buylist(self.buylist)
+        return (self._base_offer_value() * offer_percent).quantize(Decimal('0.01'))
+
     def save(self, *args, **kwargs):
         self.cash_offer_price = self.calculate_cash_offer_price()
         self.trade_offer_price = self.calculate_trade_offer_price()
+        self.recommended_offer_price = self.calculate_recommended_offer_price()
+
+        if self._state.adding:
+            self.final_offer_price = self.recommended_offer_price
+
         super().save(*args, **kwargs)

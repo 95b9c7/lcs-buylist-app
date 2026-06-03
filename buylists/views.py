@@ -79,7 +79,9 @@ def buylist_create(request):
 
 def buylist_detail(request, pk):
     buylist = get_object_or_404(
-        Buylist.objects.select_related('customer').prefetch_related('items'),
+        Buylist.objects.select_related('customer').prefetch_related(
+            'items__override_by',
+        ),
         pk=pk,
     )
     status_form = BuylistStatusForm(instance=buylist)
@@ -93,7 +95,9 @@ def buylist_detail(request, pk):
 
 def buylist_export_csv(request, pk):
     buylist = get_object_or_404(
-        Buylist.objects.select_related('customer').prefetch_related('items'),
+        Buylist.objects.select_related('customer').prefetch_related(
+            'items__override_by',
+        ),
         pk=pk,
     )
     safe_customer_name = re.sub(
@@ -116,7 +120,9 @@ def buylist_export_csv(request, pk):
         'Condition',
         'Market Price',
         'Offer Percent',
-        'Offer Price',
+        'Recommended Offer Price',
+        'Final Offer Price',
+        'Override Reason',
         'Notes',
     ])
 
@@ -125,8 +131,6 @@ def buylist_export_csv(request, pk):
             offer_percent = int(item.offer_percent * 100)
         else:
             offer_percent = ''
-        offer_price = item.offer_price if item.offer_price is not None else ''
-
         writer.writerow([
             buylist.pk,
             buylist.customer.name,
@@ -136,7 +140,9 @@ def buylist_export_csv(request, pk):
             item.condition,
             item.market_price,
             offer_percent,
-            offer_price,
+            item.recommended_offer_price,
+            item.final_offer_price,
+            item.override_reason,
             item.notes,
         ])
 
@@ -145,7 +151,9 @@ def buylist_export_csv(request, pk):
 
 def buylist_offer_sheet(request, pk):
     buylist = get_object_or_404(
-        Buylist.objects.select_related('customer').prefetch_related('items'),
+        Buylist.objects.select_related('customer').prefetch_related(
+            'items__override_by',
+        ),
         pk=pk,
     )
     return render(request, 'buylists/buylist_offer_sheet.html', {
@@ -172,6 +180,8 @@ def buylist_update_payment_choice(request, pk):
     form = BuylistPaymentChoiceForm(request.POST, instance=buylist)
     if form.is_valid():
         form.save()
+        for item in buylist.items.all():
+            item.save()
         if buylist.payment_choice:
             label = buylist.get_payment_choice_display()
             messages.success(request, f'Payment choice set to {label}.')
@@ -185,7 +195,7 @@ def buylist_update_payment_choice(request, pk):
 def buylistitem_create(request, buylist_pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
     if request.method == 'POST':
-        form = BuylistItemForm(request.POST)
+        form = BuylistItemForm(request.POST, buylist=buylist, user=request.user)
         if form.is_valid():
             item = form.save(commit=False)
             item.buylist = buylist
@@ -193,7 +203,7 @@ def buylistitem_create(request, buylist_pk):
             messages.success(request, f'Added "{item.card_name}".')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
-        form = BuylistItemForm()
+        form = BuylistItemForm(buylist=buylist, user=request.user)
     return render(request, 'buylists/buylistitem_form.html', {
         'form': form,
         'buylist': buylist,
@@ -205,13 +215,15 @@ def buylistitem_edit(request, buylist_pk, pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
     item = get_object_or_404(BuylistItem, pk=pk, buylist=buylist)
     if request.method == 'POST':
-        form = BuylistItemForm(request.POST, instance=item)
+        form = BuylistItemForm(
+            request.POST, instance=item, buylist=buylist, user=request.user,
+        )
         if form.is_valid():
             form.save()
             messages.success(request, f'Updated "{item.card_name}".')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
-        form = BuylistItemForm(instance=item)
+        form = BuylistItemForm(instance=item, buylist=buylist, user=request.user)
     return render(request, 'buylists/buylistitem_form.html', {
         'form': form,
         'buylist': buylist,

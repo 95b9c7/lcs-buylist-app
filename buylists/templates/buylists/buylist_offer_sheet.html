@@ -68,7 +68,7 @@
                     <th class="text-end">Quantity</th>
                     <th>Condition</th>
                     <th class="text-end">Market Price</th>
-                    <th class="text-end">Offer Price</th>
+                    <th class="text-end">Final Offer</th>
                 </tr>
             </thead>
             <tbody>
@@ -79,9 +79,7 @@
                     <td class="text-end">{{ item.quantity }}</td>
                     <td>{{ item.condition }}</td>
                     <td class="text-end">${{ item.market_price }}</td>
-                    <td class="text-end">
-                        {% if item.offer_price %}${{ item.offer_price }}{% else %}—{% endif %}
-                    </td>
+                    <td class="text-end">${{ item.final_offer_price }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -89,9 +87,7 @@
                 <tr>
                     <td colspan="4" class="text-end">Totals</td>
                     <td class="text-end">${{ buylist.total_market_value }}</td>
-                    <td class="text-end">
-                        {% if buylist.total_offer_value %}${{ buylist.total_offer_value }}{% else %}—{% endif %}
-                    </td>
+                    <td class="text-end">${{ buylist.total_final_offer_value }}</td>
                 </tr>
             </tfoot>
         </table>
@@ -104,14 +100,9 @@
                     <dl class="row mb-0">
                         <dt class="col-7">Total market value</dt>
                         <dd class="col-5 text-end mb-2">${{ buylist.total_market_value }}</dd>
-                        <dt class="col-7">
-                            Total offer value
-                            {% if buylist.payment_choice_selected %}
-                            <span class="d-block small fw-normal text-muted">({{ buylist.get_payment_choice_display }})</span>
-                            {% endif %}
-                        </dt>
+                        <dt class="col-7">Total final offer</dt>
                         <dd class="col-5 text-end mb-0 fs-5 fw-bold text-success">
-                            {% if buylist.total_offer_value %}${{ buylist.total_offer_value }}{% else %}—{% endif %}
+                            ${{ buylist.total_final_offer_value }}
                         </dd>
                     </dl>
                 </div>

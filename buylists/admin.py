@@ -12,7 +12,11 @@ class CustomerAdmin(admin.ModelAdmin):
 class BuylistItemInline(admin.TabularInline):
     model = BuylistItem
     extra = 0
-    readonly_fields = ['cash_offer_price', 'trade_offer_price']
+    readonly_fields = [
+        'cash_offer_price',
+        'trade_offer_price',
+        'recommended_offer_price',
+    ]
 
 
 @admin.register(Buylist)
@@ -32,8 +36,12 @@ class BuylistItemAdmin(admin.ModelAdmin):
         'quantity',
         'condition',
         'market_price',
-        'cash_offer_price',
-        'trade_offer_price',
+        'recommended_offer_price',
+        'final_offer_price',
     ]
     list_filter = ['condition']
-    readonly_fields = ['cash_offer_price', 'trade_offer_price']
+    readonly_fields = [
+        'cash_offer_price',
+        'trade_offer_price',
+        'recommended_offer_price',
+    ]
