@@ -30,6 +30,18 @@
     </div>
 </div>
 
+{% if override_item_count %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span>
+        <strong>{{ override_item_count }}</strong> card{{ override_item_count|pluralize }}
+        with offer overrides on this buylist.
+    </span>
+    {% if nav_can_view_override_report %}
+    <a href="{% url 'buylists:override_report' %}" class="btn btn-sm btn-outline-dark">View override report</a>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if can_manage_settings %}
 <div class="card mb-4">
     <div class="card-body">
@@ -82,7 +94,9 @@
                 <td>
                     {{ item.card_name }}
                     {% if item.is_offer_overridden %}
-                    <span class="badge bg-warning text-dark ms-1" title="{{ item.override_reason }}">Override</span>
+                    <span class="badge bg-warning text-dark ms-1" title="{{ item.override_reason }}">
+                        Override +${{ item.override_difference|floatformat:2 }}
+                    </span>
                     {% endif %}
                 </td>
                 <td>{{ item.set_name|default:"—" }}</td>
@@ -97,10 +111,14 @@
                     <a href="{% url 'buylists:buylistitem_delete' buylist_pk=buylist.pk pk=item.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
                 </td>
             </tr>
-            {% if item.is_offer_overridden %}
+            {% if item.has_override_record %}
             <tr class="table-warning">
                 <td colspan="9" class="small py-1">
-                    <strong>Override:</strong> {{ item.override_reason }}
+                    <strong>Override recorded:</strong>
+                    recommended ${{ item.override_recommended_price|floatformat:2 }}
+                    → final ${{ item.override_final_price|floatformat:2 }}
+                    (+${{ item.override_difference|floatformat:2 }})
+                    · {{ item.override_reason }}
                     {% if item.override_by %} · by {{ item.override_by.username }}{% endif %}
                     {% if item.override_at %} · {{ item.override_at|date:"M j, Y g:i A" }}{% endif %}
                 </td>

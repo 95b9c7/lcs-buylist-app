@@ -1,8 +1,6 @@
 from decimal import Decimal
 
 from django import forms
-from django.utils import timezone
-
 from .models import Buylist, BuylistItem, Customer, PricingRule, round_money
 from .offer_rules import get_role_label, validate_final_offer
 from .permissions import user_is_manager_or_owner
@@ -160,15 +158,6 @@ class BuylistItemForm(BootstrapFormMixin, forms.ModelForm):
         if self.instance.pk and 'recommended_offer_price' in self.cleaned_data:
             instance.recommended_offer_price = self.cleaned_data['recommended_offer_price']
 
-            if instance.final_offer_price > instance.recommended_offer_price:
-                if self.user and self.user.is_authenticated:
-                    instance.override_by = self.user
-                instance.override_at = timezone.now()
-            else:
-                instance.override_reason = ''
-                instance.override_by = None
-                instance.override_at = None
-
         if commit:
-            instance.save()
+            instance.save(override_user=self.user)
         return instance

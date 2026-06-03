@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 MONEY_PRECISION = Decimal('0.01')
 
@@ -104,6 +105,10 @@ class Buylist(models.Model):
         """Totals use the employee-approved final offer."""
         return self.total_final_offer_value
 
+    @property
+    def override_item_count(self):
+        return self.items.filter(override_at__isnull=False).count()
+
 
 class BuylistItem(models.Model):
     CONDITION_NM = 'NM'
@@ -163,6 +168,22 @@ class BuylistItem(models.Model):
     )
     final_offer_price = models.DecimalField(max_digits=10, decimal_places=2)
     override_reason = models.TextField(blank=True)
+    override_recommended_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        editable=False,
+        help_text='Recommended offer at the time of override.',
+    )
+    override_final_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        editable=False,
+        help_text='Final offer recorded at the time of override.',
+    )
     override_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -207,6 +228,33 @@ class BuylistItem(models.Model):
     def is_offer_overridden(self):
         return self.final_offer_price > self.recommended_offer_price
 
+    @property
+    def has_override_record(self):
+        return self.override_at is not None
+
+    @property
+    def override_difference(self):
+        if not self.is_offer_overridden:
+            return Decimal('0.00')
+        base = self.override_recommended_price or self.recommended_offer_price
+        final = self.override_final_price or self.final_offer_price
+        return round_money(final - base)
+
+    def apply_override_tracking(self, user=None):
+        """Snapshot override details when final offer is above recommended."""
+        if self.final_offer_price > self.recommended_offer_price:
+            self.override_recommended_price = self.recommended_offer_price
+            self.override_final_price = self.final_offer_price
+            if user and user.is_authenticated:
+                self.override_by = user
+            self.override_at = timezone.now()
+        else:
+            self.override_recommended_price = None
+            self.override_final_price = None
+            self.override_reason = ''
+            self.override_by = None
+            self.override_at = None
+
     def _base_offer_value(self):
         return (
             Decimal(self.quantity)
@@ -224,7 +272,7 @@ class BuylistItem(models.Model):
         offer_percent = self.get_offer_percent_for_buylist(self.buylist)
         return round_money(self._base_offer_value() * offer_percent)
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, override_user=None, **kwargs):
         self.cash_offer_price = self.calculate_cash_offer_price()
         self.trade_offer_price = self.calculate_trade_offer_price()
         self.recommended_offer_price = self.calculate_recommended_offer_price()
@@ -233,6 +281,9 @@ class BuylistItem(models.Model):
             self.final_offer_price = self.recommended_offer_price
         else:
             self.final_offer_price = round_money(self.final_offer_price)
+
+        if not self._state.adding:
+            self.apply_override_tracking(override_user)
 
         super().save(*args, **kwargs)
 

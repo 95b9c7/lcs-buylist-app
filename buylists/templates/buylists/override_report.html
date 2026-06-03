@@ -1,0 +1,63 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Offer Overrides — LCS Buylist{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">Offer Override Report</h1>
+    <span class="badge bg-warning text-dark">Manager / Owner</span>
+</div>
+
+<p class="text-muted">
+    All cards where the final offer was set above the recommended offer at the time of save.
+    Totals on buylists still use <strong>final offer</strong> amounts.
+</p>
+
+{% if overrides %}
+<div class="alert alert-light border mb-4">
+    <strong>{{ overrides|length }}</strong> override{{ overrides|length|pluralize }}
+    · total amount above recommended: <strong>${{ total_extra|floatformat:2 }}</strong>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle table-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>When</th>
+                <th>Customer</th>
+                <th>Buylist</th>
+                <th>Card</th>
+                <th class="text-end">Recommended</th>
+                <th class="text-end">Final</th>
+                <th class="text-end">+ Over</th>
+                <th>Reason</th>
+                <th>By</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in overrides %}
+            <tr>
+                <td class="text-nowrap">{{ item.override_at|date:"M j, Y g:i A" }}</td>
+                <td>{{ item.buylist.customer.name }}</td>
+                <td>
+                    <a href="{% url 'buylists:buylist_detail' pk=item.buylist.pk %}">#{{ item.buylist.pk }}</a>
+                </td>
+                <td>{{ item.card_name }}</td>
+                <td class="text-end">${{ item.override_recommended_price|floatformat:2 }}</td>
+                <td class="text-end fw-semibold">${{ item.override_final_price|floatformat:2 }}</td>
+                <td class="text-end text-warning fw-semibold">+${{ item.override_difference|floatformat:2 }}</td>
+                <td>{{ item.override_reason }}</td>
+                <td>{{ item.override_by.username|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No offer overrides recorded yet.</div>
+{% endif %}
+
+<p class="mt-4">
+    <a href="{% url 'buylists:dashboard' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+</p>
+{% endblock %}

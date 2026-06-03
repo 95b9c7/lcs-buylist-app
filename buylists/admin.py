@@ -73,6 +73,8 @@ class BuylistItemAdmin(admin.ModelAdmin):
         'cash_offer_price',
         'trade_offer_price',
         'recommended_offer_price',
+        'override_recommended_price',
+        'override_final_price',
         'override_by',
         'override_at',
     ]
@@ -92,7 +94,13 @@ class BuylistItemAdmin(admin.ModelAdmin):
             ),
         }),
         ('Override', {
-            'fields': ('override_reason', 'override_by', 'override_at'),
+            'fields': (
+                'override_recommended_price',
+                'override_final_price',
+                'override_reason',
+                'override_by',
+                'override_at',
+            ),
             'classes': ('collapse',),
         }),
     )

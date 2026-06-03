@@ -49,6 +49,7 @@ urlpatterns = [
         views.buylistitem_delete,
         name='buylistitem_delete',
     ),
+    path('reports/overrides/', views.override_report, name='override_report'),
     path('pricing-rules/', views.pricing_rule_list, name='pricing_rule_list'),
     path('pricing-rules/new/', views.pricing_rule_create, name='pricing_rule_create'),
     path(

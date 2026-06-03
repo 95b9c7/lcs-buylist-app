@@ -162,6 +162,7 @@ def buylist_detail(request, pk):
         'status_form': status_form,
         'payment_form': payment_form,
         'can_manage_settings': can_manage_settings,
+        'override_item_count': buylist.override_item_count,
     })
 
 
@@ -196,6 +197,10 @@ def buylist_export_csv(request, pk):
         'Recommended Offer Price',
         'Final Offer Price',
         'Override Reason',
+        'Override Recommended',
+        'Override Final',
+        'Override By',
+        'Override At',
         'Notes',
     ])
 
@@ -216,6 +221,10 @@ def buylist_export_csv(request, pk):
             item.recommended_offer_price,
             item.final_offer_price,
             item.override_reason,
+            item.override_recommended_price,
+            item.override_final_price,
+            item.override_by.username if item.override_by else '',
+            item.override_at,
             item.notes,
         ])
 
@@ -257,7 +266,7 @@ def buylist_update_payment_choice(request, pk):
     if form.is_valid():
         form.save()
         for item in buylist.items.all():
-            item.save()
+            item.save(override_user=request.user)
         if buylist.payment_choice:
             label = buylist.get_payment_choice_display()
             messages.success(request, f'Payment choice set to {label}.')
@@ -276,7 +285,7 @@ def buylistitem_create(request, buylist_pk):
         if form.is_valid():
             item = form.save(commit=False)
             item.buylist = buylist
-            item.save()
+            item.save(override_user=request.user)
             messages.success(request, f'Added "{item.card_name}".')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
@@ -322,6 +331,22 @@ def buylistitem_delete(request, buylist_pk, pk):
     return render(request, 'buylists/buylistitem_confirm_delete.html', {
         'buylist': buylist,
         'item': item,
+    })
+
+
+@manager_or_owner_required
+def override_report(request):
+    overrides = (
+        BuylistItem.objects.filter(override_at__isnull=False)
+        .select_related('buylist__customer', 'override_by')
+        .order_by('-override_at')
+    )
+    total_extra = round_money(
+        sum(item.override_difference for item in overrides)
+    )
+    return render(request, 'buylists/override_report.html', {
+        'overrides': overrides,
+        'total_extra': total_extra,
     })
 
 
