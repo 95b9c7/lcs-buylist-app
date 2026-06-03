@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Buylist, BuylistItem, Customer, PricingRule
+from .models import Buylist, BuylistActivity, BuylistItem, Customer, PricingRule
 from .permissions import user_is_owner
 
 
@@ -117,6 +117,23 @@ class BuylistItemAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
+
+
+@admin.register(BuylistActivity)
+class BuylistActivityAdmin(admin.ModelAdmin):
+    list_display = ['id', 'buylist', 'user', 'action', 'created_at']
+    list_filter = ['action', ('created_at', admin.DateFieldListFilter)]
+    search_fields = ['buylist__id', 'user__username', 'description']
+    readonly_fields = ['buylist', 'user', 'action', 'description', 'created_at']
+    list_per_page = 50
+    ordering = ['-created_at']
+    date_hierarchy = 'created_at'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PricingRule)

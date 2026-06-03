@@ -21,7 +21,8 @@ from .forms import (
     CustomerForm,
     PricingRuleForm,
 )
-from .models import Buylist, BuylistItem, Customer, PricingRule, round_money
+from .activity import log_buylist_activity
+from .models import Buylist, BuylistActivity, BuylistItem, Customer, PricingRule, round_money
 from .buylist_locking import (
     can_edit_buylist_items,
     can_unlock_buylist,
@@ -265,9 +266,11 @@ def buylist_detail(request, pk):
             'customer', 'paid_by', 'unlocked_by',
         ).prefetch_related(
             'items__override_by',
+            'activities__user',
         ),
         pk=pk,
     )
+    activities = buylist.activities.all()
     can_manage_settings = user_is_manager_or_owner(request.user)
     can_edit_items = can_edit_buylist_items(buylist, request.user)
     status_form = (
@@ -289,6 +292,7 @@ def buylist_detail(request, pk):
         'show_locked_badge': show_locked_badge(buylist, request.user),
         'lock_message': lock_status_message(buylist, request.user),
         'override_item_count': buylist.override_item_count,
+        'activities': activities,
     })
 
 
@@ -354,6 +358,12 @@ def buylist_export_csv(request, pk):
             item.notes,
         ])
 
+    log_buylist_activity(
+        buylist,
+        request.user,
+        BuylistActivity.ACTION_CSV_EXPORTED,
+        f'Exported buylist #{buylist.pk} to CSV.',
+    )
     return response
 
 
@@ -365,6 +375,12 @@ def buylist_offer_sheet(request, pk):
         ),
         pk=pk,
     )
+    log_buylist_activity(
+        buylist,
+        request.user,
+        BuylistActivity.ACTION_OFFER_PRINTED,
+        f'Viewed offer sheet for buylist #{buylist.pk}.',
+    )
     return render(request, 'buylists/buylist_offer_sheet.html', {
         'buylist': buylist,
         'store_name': '[Your Store Name]',
@@ -375,9 +391,28 @@ def buylist_offer_sheet(request, pk):
 @require_POST
 def buylist_update_status(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
+    old_status = buylist.status
     form = BuylistStatusForm(request.POST, instance=buylist, user=request.user)
     if form.is_valid():
         buylist = form.save()
+        if old_status != buylist.status:
+            old_label = dict(Buylist.STATUS_CHOICES).get(old_status, old_status)
+            log_buylist_activity(
+                buylist,
+                request.user,
+                BuylistActivity.ACTION_STATUS_CHANGED,
+                f'Status changed from {old_label} to {buylist.get_status_display()}.',
+            )
+        if buylist.is_paid:
+            log_buylist_activity(
+                buylist,
+                request.user,
+                BuylistActivity.ACTION_PAYMENT_RECORDED,
+                (
+                    f'Payment recorded: ${buylist.amount_paid} via '
+                    f'{buylist.get_payment_method_display()}.'
+                ),
+            )
         if buylist.is_paid:
             messages.success(
                 request,
@@ -439,6 +474,12 @@ def buylistitem_create(request, buylist_pk):
             item = form.save(commit=False)
             item.buylist = buylist
             item.save(override_user=request.user)
+            log_buylist_activity(
+                buylist,
+                request.user,
+                BuylistActivity.ACTION_ITEM_ADDED,
+                f'Added "{item.card_name}" (qty {item.quantity}).',
+            )
             messages.success(request, f'Added "{item.card_name}".')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
@@ -456,11 +497,29 @@ def buylistitem_edit(request, buylist_pk, pk):
     _check_can_edit_items(buylist, request.user)
     item = get_object_or_404(BuylistItem, pk=pk, buylist=buylist)
     if request.method == 'POST':
+        had_override = bool(item.override_at)
         form = BuylistItemForm(
             request.POST, instance=item, buylist=buylist, user=request.user,
         )
         if form.is_valid():
-            form.save()
+            item = form.save()
+            log_buylist_activity(
+                buylist,
+                request.user,
+                BuylistActivity.ACTION_ITEM_UPDATED,
+                f'Updated "{item.card_name}".',
+            )
+            if item.is_offer_overridden and not had_override:
+                log_buylist_activity(
+                    buylist,
+                    request.user,
+                    BuylistActivity.ACTION_OVERRIDE_ADDED,
+                    (
+                        f'Override on "{item.card_name}": '
+                        f'${item.recommended_offer_price} → ${item.final_offer_price} '
+                        f'({item.override_reason}).'
+                    ),
+                )
             messages.success(request, f'Updated "{item.card_name}".')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
@@ -481,6 +540,12 @@ def buylistitem_delete(request, buylist_pk, pk):
     if request.method == 'POST':
         card_name = item.card_name
         item.delete()
+        log_buylist_activity(
+            buylist,
+            request.user,
+            BuylistActivity.ACTION_ITEM_DELETED,
+            f'Removed "{card_name}".',
+        )
         messages.success(request, f'Removed "{card_name}".')
         return redirect('buylists:buylist_detail', pk=buylist.pk)
     return render(request, 'buylists/buylistitem_confirm_delete.html', {

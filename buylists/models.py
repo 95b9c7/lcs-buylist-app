@@ -374,3 +374,51 @@ class PricingRule(models.Model):
         if self.max_market_price is not None:
             return f'{self.name} (${self.min_market_price}–${self.max_market_price})'
         return f'{self.name} (${self.min_market_price}+)'
+
+
+class BuylistActivity(models.Model):
+    ACTION_BUYLIST_CREATED = 'buylist_created'
+    ACTION_ITEM_ADDED = 'item_added'
+    ACTION_ITEM_UPDATED = 'item_updated'
+    ACTION_ITEM_DELETED = 'item_deleted'
+    ACTION_STATUS_CHANGED = 'status_changed'
+    ACTION_OFFER_PRINTED = 'offer_printed'
+    ACTION_CSV_EXPORTED = 'csv_exported'
+    ACTION_PAYMENT_RECORDED = 'payment_recorded'
+    ACTION_OVERRIDE_ADDED = 'override_added'
+
+    ACTION_CHOICES = [
+        (ACTION_BUYLIST_CREATED, 'Buylist created'),
+        (ACTION_ITEM_ADDED, 'Item added'),
+        (ACTION_ITEM_UPDATED, 'Item updated'),
+        (ACTION_ITEM_DELETED, 'Item deleted'),
+        (ACTION_STATUS_CHANGED, 'Status changed'),
+        (ACTION_OFFER_PRINTED, 'Offer printed'),
+        (ACTION_CSV_EXPORTED, 'CSV exported'),
+        (ACTION_PAYMENT_RECORDED, 'Payment recorded'),
+        (ACTION_OVERRIDE_ADDED, 'Override added'),
+    ]
+
+    buylist = models.ForeignKey(
+        Buylist,
+        on_delete=models.CASCADE,
+        related_name='activities',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='buylist_activities',
+    )
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'buylist activities'
+
+    def __str__(self):
+        return f'{self.buylist_id} — {self.get_action_display()}'
+
