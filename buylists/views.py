@@ -1,10 +1,11 @@
 import csv
 import re
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db.models import Count, DecimalField, F, Q, Sum, Value
 from django.db.models.expressions import ExpressionWrapper
@@ -254,7 +255,13 @@ def buylist_create(request):
     if request.method == 'POST':
         form = BuylistForm(request.POST, user=request.user)
         if form.is_valid():
-            buylist = form.save()
+            buylist = form.save(commit=False)
+            if request.user.is_authenticated:
+                buylist.created_by = request.user
+                if buylist.status in Buylist.TERMINAL_STATUSES:
+                    buylist.completed_by = request.user
+                    buylist.completed_at = timezone.now()
+            buylist.save()
             messages.success(request, 'Buylist created.')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
@@ -272,7 +279,7 @@ def buylist_create(request):
 def buylist_detail(request, pk):
     buylist = get_object_or_404(
         Buylist.objects.select_related(
-            'customer', 'paid_by', 'unlocked_by',
+            'customer', 'created_by', 'completed_by', 'paid_by', 'unlocked_by',
         ).prefetch_related(
             'items__override_by',
             'activities__user',
