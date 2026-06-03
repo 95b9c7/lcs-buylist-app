@@ -1,0 +1,11 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Access Denied — LCS Buylist{% endblock %}
+
+{% block content %}
+<div class="alert alert-warning">
+    <h1 class="h4">Access denied</h1>
+    <p class="mb-0">You do not have permission to view this page.</p>
+</div>
+<a href="{% url 'buylists:dashboard' %}" class="btn btn-primary">Back to Dashboard</a>
+{% endblock %}

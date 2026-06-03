@@ -21,3 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('buylists.urls')),
 ]
+
+handler403 = 'buylists.views.permission_denied_view'

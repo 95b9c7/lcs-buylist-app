@@ -30,9 +30,10 @@
     </div>
 </div>
 
+{% if can_manage_settings %}
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="h6 text-muted mb-3">Buylist settings</h2>
+        <h2 class="h6 text-muted mb-3">Buylist settings <span class="badge bg-secondary">Manager / Owner</span></h2>
         <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="row g-2 align-items-end mb-3">
             {% csrf_token %}
             <div class="col-auto">
@@ -55,6 +56,9 @@
         </form>
     </div>
 </div>
+{% else %}
+<p class="text-muted small mb-4">Status and payment settings can be changed by a Manager or Owner.</p>
+{% endif %}
 
 {% if buylist.items.all %}
 <div class="table-responsive mb-4">

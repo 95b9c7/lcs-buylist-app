@@ -15,10 +15,22 @@ from .forms import (
     BuylistPaymentChoiceForm,
     BuylistStatusForm,
     CustomerForm,
+    PricingRuleForm,
 )
-from .models import Buylist, BuylistItem, Customer, round_money
+from .models import Buylist, BuylistItem, Customer, PricingRule, round_money
+from .permissions import (
+    employee_required,
+    manager_or_owner_required,
+    owner_required,
+    user_is_manager_or_owner,
+)
 
 
+def permission_denied_view(request, exception):
+    return render(request, 'buylists/403.html', status=403)
+
+
+@employee_required
 def dashboard(request):
     buylists = (
         Buylist.objects.select_related('customer')
@@ -45,6 +57,7 @@ def dashboard(request):
     })
 
 
+@employee_required
 def customer_list(request):
     customers = (
         Customer.objects.annotate(
@@ -66,7 +79,6 @@ def customer_list(request):
             | Q(email__icontains=search_query)
         )
 
-    # Sum() in SQLite can return extra decimal places (e.g. 12.6000000000000).
     for customer in customers:
         customer.total_offered = round_money(customer.total_offered)
 
@@ -76,6 +88,7 @@ def customer_list(request):
     })
 
 
+@employee_required
 def customer_detail(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     buylists = (
@@ -93,6 +106,7 @@ def customer_detail(request, pk):
     })
 
 
+@employee_required
 def customer_create(request):
     if request.method == 'POST':
         form = CustomerForm(request.POST)
@@ -108,6 +122,7 @@ def customer_create(request):
     })
 
 
+@employee_required
 def buylist_create(request):
     customer = None
     customer_pk = request.GET.get('customer')
@@ -115,14 +130,14 @@ def buylist_create(request):
         customer = get_object_or_404(Customer, pk=customer_pk)
 
     if request.method == 'POST':
-        form = BuylistForm(request.POST)
+        form = BuylistForm(request.POST, user=request.user)
         if form.is_valid():
             buylist = form.save()
             messages.success(request, 'Buylist created.')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
         initial = {'customer': customer} if customer else None
-        form = BuylistForm(initial=initial)
+        form = BuylistForm(initial=initial, user=request.user)
 
     return render(request, 'buylists/buylist_form.html', {
         'form': form,
@@ -131,6 +146,7 @@ def buylist_create(request):
     })
 
 
+@employee_required
 def buylist_detail(request, pk):
     buylist = get_object_or_404(
         Buylist.objects.select_related('customer').prefetch_related(
@@ -138,15 +154,18 @@ def buylist_detail(request, pk):
         ),
         pk=pk,
     )
-    status_form = BuylistStatusForm(instance=buylist)
-    payment_form = BuylistPaymentChoiceForm(instance=buylist)
+    can_manage_settings = user_is_manager_or_owner(request.user)
+    status_form = BuylistStatusForm(instance=buylist) if can_manage_settings else None
+    payment_form = BuylistPaymentChoiceForm(instance=buylist) if can_manage_settings else None
     return render(request, 'buylists/buylist_detail.html', {
         'buylist': buylist,
         'status_form': status_form,
         'payment_form': payment_form,
+        'can_manage_settings': can_manage_settings,
     })
 
 
+@employee_required
 def buylist_export_csv(request, pk):
     buylist = get_object_or_404(
         Buylist.objects.select_related('customer').prefetch_related(
@@ -203,6 +222,7 @@ def buylist_export_csv(request, pk):
     return response
 
 
+@employee_required
 def buylist_offer_sheet(request, pk):
     buylist = get_object_or_404(
         Buylist.objects.select_related('customer').prefetch_related(
@@ -216,6 +236,7 @@ def buylist_offer_sheet(request, pk):
     })
 
 
+@manager_or_owner_required
 @require_POST
 def buylist_update_status(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
@@ -228,6 +249,7 @@ def buylist_update_status(request, pk):
     return redirect('buylists:buylist_detail', pk=pk)
 
 
+@manager_or_owner_required
 @require_POST
 def buylist_update_payment_choice(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
@@ -246,6 +268,7 @@ def buylist_update_payment_choice(request, pk):
     return redirect('buylists:buylist_detail', pk=pk)
 
 
+@employee_required
 def buylistitem_create(request, buylist_pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
     if request.method == 'POST':
@@ -265,6 +288,7 @@ def buylistitem_create(request, buylist_pk):
     })
 
 
+@employee_required
 def buylistitem_edit(request, buylist_pk, pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
     item = get_object_or_404(BuylistItem, pk=pk, buylist=buylist)
@@ -286,6 +310,7 @@ def buylistitem_edit(request, buylist_pk, pk):
     })
 
 
+@employee_required
 def buylistitem_delete(request, buylist_pk, pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
     item = get_object_or_404(BuylistItem, pk=pk, buylist=buylist)
@@ -297,4 +322,46 @@ def buylistitem_delete(request, buylist_pk, pk):
     return render(request, 'buylists/buylistitem_confirm_delete.html', {
         'buylist': buylist,
         'item': item,
+    })
+
+
+@owner_required
+def pricing_rule_list(request):
+    rules = PricingRule.objects.all()
+    return render(request, 'buylists/pricing_rule_list.html', {
+        'rules': rules,
+    })
+
+
+@owner_required
+def pricing_rule_create(request):
+    if request.method == 'POST':
+        form = PricingRuleForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Pricing rule created.')
+            return redirect('buylists:pricing_rule_list')
+    else:
+        form = PricingRuleForm()
+    return render(request, 'buylists/pricing_rule_form.html', {
+        'form': form,
+        'title': 'New Pricing Rule',
+    })
+
+
+@owner_required
+def pricing_rule_edit(request, pk):
+    rule = get_object_or_404(PricingRule, pk=pk)
+    if request.method == 'POST':
+        form = PricingRuleForm(request.POST, instance=rule)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Pricing rule updated.')
+            return redirect('buylists:pricing_rule_list')
+    else:
+        form = PricingRuleForm(instance=rule)
+    return render(request, 'buylists/pricing_rule_form.html', {
+        'form': form,
+        'title': 'Edit Pricing Rule',
+        'rule': rule,
     })

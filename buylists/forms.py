@@ -3,8 +3,9 @@ from decimal import Decimal
 from django import forms
 from django.utils import timezone
 
-from .models import Buylist, BuylistItem, Customer, round_money
+from .models import Buylist, BuylistItem, Customer, PricingRule, round_money
 from .offer_rules import get_role_label, validate_final_offer
+from .permissions import user_is_manager_or_owner
 
 
 class BootstrapFormMixin:
@@ -30,6 +31,31 @@ class BuylistForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Buylist
         fields = ['customer', 'status']
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user and not user_is_manager_or_owner(user):
+            if 'status' in self.fields:
+                del self.fields['status']
+
+
+class PricingRuleForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = PricingRule
+        fields = [
+            'name',
+            'min_market_price',
+            'max_market_price',
+            'offer_percent',
+            'is_active',
+        ]
+        widgets = {
+            'offer_percent': forms.NumberInput(attrs={'step': '0.01'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['offer_percent'].help_text = 'Decimal rate (0.70 = 70%).'
 
 
 class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):

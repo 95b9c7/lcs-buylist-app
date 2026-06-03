@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import Buylist, BuylistItem, Customer, PricingRule
+from .permissions import user_is_owner
 
 
 @admin.register(Customer)
@@ -110,3 +111,18 @@ class PricingRuleAdmin(admin.ModelAdmin):
     list_per_page = 25
     search_fields = ['name']
     ordering = ['min_market_price', 'name']
+
+    def has_module_permission(self, request):
+        return user_is_owner(request.user)
+
+    def has_view_permission(self, request, obj=None):
+        return user_is_owner(request.user)
+
+    def has_add_permission(self, request):
+        return user_is_owner(request.user)
+
+    def has_change_permission(self, request, obj=None):
+        return user_is_owner(request.user)
+
+    def has_delete_permission(self, request, obj=None):
+        return user_is_owner(request.user)

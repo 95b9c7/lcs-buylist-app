@@ -1,3 +1,4 @@
+from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import path
 
 from . import views
@@ -5,6 +6,8 @@ from . import views
 app_name = 'buylists'
 
 urlpatterns = [
+    path('login/', LoginView.as_view(template_name='buylists/login.html'), name='login'),
+    path('logout/', LogoutView.as_view(), name='logout'),
     path('', views.dashboard, name='dashboard'),
     path('customers/', views.customer_list, name='customer_list'),
     path('customers/new/', views.customer_create, name='customer_create'),
@@ -45,5 +48,12 @@ urlpatterns = [
         'buylists/<int:buylist_pk>/items/<int:pk>/delete/',
         views.buylistitem_delete,
         name='buylistitem_delete',
+    ),
+    path('pricing-rules/', views.pricing_rule_list, name='pricing_rule_list'),
+    path('pricing-rules/new/', views.pricing_rule_create, name='pricing_rule_create'),
+    path(
+        'pricing-rules/<int:pk>/edit/',
+        views.pricing_rule_edit,
+        name='pricing_rule_edit',
     ),
 ]

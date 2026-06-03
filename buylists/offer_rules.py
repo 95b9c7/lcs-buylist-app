@@ -2,9 +2,9 @@ from decimal import Decimal
 
 from .models import round_money
 
-GROUP_MANAGER = 'Manager'
-GROUP_OWNER = 'Owner'
-GROUP_ADMIN = 'Admin'
+from .permissions import GROUP_MANAGER, GROUP_OWNER
+
+GROUP_ADMIN = 'Admin'  # legacy; treated like Owner for overrides
 
 EMPLOYEE_MAX_OVERRIDE_PERCENT = Decimal('5')
 MANAGER_MAX_OVERRIDE_PERCENT = Decimal('15')
@@ -36,7 +36,7 @@ def get_override_limit_percent(user):
 def get_role_label(user):
     limit = get_override_limit_percent(user)
     if limit is None:
-        return 'Owner/Admin (unlimited override)'
+        return 'Owner (unlimited override)'
     if limit == MANAGER_MAX_OVERRIDE_PERCENT:
         return 'Manager (up to 15% above recommended)'
     return 'Employee (up to 5% above recommended)'

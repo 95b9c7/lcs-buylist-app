@@ -1,0 +1,57 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Pricing Rules — LCS Buylist{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">Pricing Rules</h1>
+    <a href="{% url 'buylists:pricing_rule_create' %}" class="btn btn-primary">New Rule</a>
+</div>
+
+<p class="text-muted">Owner-only settings for store offer rates by market price range.</p>
+
+{% if rules %}
+<div class="table-responsive">
+    <table class="table table-striped align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>Name</th>
+                <th class="text-end">Min Price</th>
+                <th class="text-end">Max Price</th>
+                <th class="text-end">Offer %</th>
+                <th>Active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rule in rules %}
+            <tr>
+                <td>{{ rule.name }}</td>
+                <td class="text-end">${{ rule.min_market_price }}</td>
+                <td class="text-end">
+                    {% if rule.max_market_price %}${{ rule.max_market_price }}{% else %}—{% endif %}
+                </td>
+                <td class="text-end">{% widthratio rule.offer_percent 1 100 %}%</td>
+                <td>
+                    {% if rule.is_active %}
+                    <span class="badge bg-success">Yes</span>
+                    {% else %}
+                    <span class="badge bg-secondary">No</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    <a href="{% url 'buylists:pricing_rule_edit' pk=rule.pk %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No pricing rules yet. <a href="{% url 'buylists:pricing_rule_create' %}">Create one</a>.</div>
+{% endif %}
+
+<p class="mt-4">
+    <a href="{% url 'buylists:dashboard' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+</p>
+{% endblock %}
