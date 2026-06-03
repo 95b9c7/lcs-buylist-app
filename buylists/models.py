@@ -225,10 +225,18 @@ class Buylist(models.Model):
             total_recommended * item.adjusted_line_value / total_adjusted
         )
 
-    def recalculate_offer_allocations(self, override_user=None, new_item_id=None):
+    def recalculate_offer_allocations(
+        self,
+        override_user=None,
+        new_item_id=None,
+        reset_final_offers=False,
+    ):
         """
         Apply cash/trade/recommended rates to the buylist total, then split
         each total proportionally across line items.
+
+        When reset_final_offers is True (e.g. payment choice changed), set each
+        line's final offer to the new recommended amount.
         """
         items = list(self.items.order_by('pk'))
         total_adjusted = round_money(
@@ -266,7 +274,7 @@ class Buylist(models.Model):
             item.cash_offer_price = cash_map[item.pk]
             item.trade_offer_price = trade_map[item.pk]
             item.recommended_offer_price = recommended_map[item.pk]
-            if item.pk == new_item_id:
+            if reset_final_offers or item.pk == new_item_id:
                 item.final_offer_price = item.recommended_offer_price
             else:
                 item.final_offer_price = round_money(item.final_offer_price)
@@ -280,8 +288,18 @@ class BuylistItem(models.Model):
     CONDITION_MP = 'MP'
     CONDITION_HP = 'HP'
     CONDITION_DMG = 'DMG'
+    CONDITION_SEALED = 'SLD'
 
     CONDITION_CHOICES = [
+        (CONDITION_NM, 'Near Mint (NM)'),
+        (CONDITION_LP, 'Lightly Played (LP)'),
+        (CONDITION_MP, 'Moderately Played (MP)'),
+        (CONDITION_HP, 'Heavily Played (HP)'),
+        (CONDITION_DMG, 'Damaged (DMG)'),
+        (CONDITION_SEALED, 'Sealed'),
+    ]
+
+    SINGLES_CONDITION_CHOICES = [
         (CONDITION_NM, 'Near Mint (NM)'),
         (CONDITION_LP, 'Lightly Played (LP)'),
         (CONDITION_MP, 'Moderately Played (MP)'),
@@ -295,6 +313,7 @@ class BuylistItem(models.Model):
         CONDITION_MP: Decimal('0.75'),
         CONDITION_HP: Decimal('0.60'),
         CONDITION_DMG: Decimal('0.40'),
+        CONDITION_SEALED: Decimal('1.00'),
     }
 
     CASH_OFFER_PERCENT = Decimal('0.60')
@@ -367,6 +386,18 @@ class BuylistItem(models.Model):
     @classmethod
     def condition_percent_for(cls, condition):
         return cls.CONDITION_DEFAULTS.get(condition, Decimal('1.00'))
+
+    @classmethod
+    def condition_choices_for_product(cls, is_sealed=False):
+        if is_sealed:
+            return [
+                (cls.CONDITION_SEALED, dict(cls.CONDITION_CHOICES)[cls.CONDITION_SEALED]),
+            ]
+        return cls.SINGLES_CONDITION_CHOICES
+
+    @property
+    def is_sealed(self):
+        return self.condition == self.CONDITION_SEALED
 
     @property
     def line_market_value(self):

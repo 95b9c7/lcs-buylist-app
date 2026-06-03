@@ -458,15 +458,32 @@ def buylist_unlock_items(request, pk):
 @require_POST
 def buylist_update_payment_choice(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
+    old_payment_choice = buylist.payment_choice
     form = BuylistPaymentChoiceForm(request.POST, instance=buylist)
     if form.is_valid():
-        form.save()
-        buylist.recalculate_offer_allocations(override_user=request.user)
+        buylist = form.save()
+        payment_changed = old_payment_choice != buylist.payment_choice
+        buylist.recalculate_offer_allocations(
+            override_user=request.user,
+            reset_final_offers=payment_changed,
+        )
         if buylist.payment_choice:
             label = buylist.get_payment_choice_display()
-            messages.success(request, f'Payment choice set to {label}.')
+            if payment_changed:
+                messages.success(
+                    request,
+                    f'Payment choice set to {label}. Final offers updated to match.',
+                )
+            else:
+                messages.success(request, f'Payment choice set to {label}.')
         else:
-            messages.success(request, 'Payment choice cleared.')
+            if payment_changed:
+                messages.success(
+                    request,
+                    'Payment choice cleared. Final offers updated to match.',
+                )
+            else:
+                messages.success(request, 'Payment choice cleared.')
     else:
         messages.error(request, 'Could not update payment choice.')
     return redirect('buylists:buylist_detail', pk=pk)
@@ -518,13 +535,14 @@ def buylist_card_search(request, buylist_pk):
 
     query = request.GET.get('q', '').strip()
     game = request.GET.get('game', 'pokemon').strip() or 'pokemon'
+    product_type = request.GET.get('product_type', 'singles').strip() or 'singles'
     results = []
     error_type = None
     error_message = None
 
     if query:
         try:
-            results = search_cards(query, game=game)
+            results = search_cards(query, game=game, product_type=product_type)
             if not results:
                 error_type = 'no_results'
                 error_message = f'No cards found for "{query}". Try a different name.'
@@ -537,6 +555,12 @@ def buylist_card_search(request, buylist_pk):
         'buylist': buylist,
         'query': query,
         'game': game,
+        'product_type': product_type,
+        'product_type_choices': [
+            ('singles', 'Singles'),
+            ('sealed', 'Sealed product'),
+            ('all', 'All'),
+        ],
         'results': results,
         'error_type': error_type,
         'error_message': error_message,
@@ -558,10 +582,17 @@ def buylist_card_condition(request, buylist_pk):
         'tcgplayerId': request.GET.get(
             'tcgplayer_id', request.POST.get('tcgplayer_id', ''),
         ).strip(),
+        'is_sealed': (
+            request.GET.get('is_sealed', request.POST.get('is_sealed', '')).lower()
+            in ('1', 'true', 'yes')
+        ),
     }
     error_type = None
     error_message = None
-    selected_condition = BuylistItem.CONDITION_NM
+    if card['is_sealed']:
+        selected_condition = BuylistItem.CONDITION_SEALED
+    else:
+        selected_condition = BuylistItem.CONDITION_NM
     selected_printing = ''
 
     if not card['id']:
@@ -570,7 +601,8 @@ def buylist_card_condition(request, buylist_pk):
 
     if request.method == 'POST' and card['id']:
         selected_condition = request.POST.get(
-            'condition', BuylistItem.CONDITION_NM,
+            'condition',
+            BuylistItem.CONDITION_SEALED if card['is_sealed'] else BuylistItem.CONDITION_NM,
         )
         selected_printing = request.POST.get('printing', '').strip()
         try:
@@ -586,6 +618,8 @@ def buylist_card_condition(request, buylist_pk):
                 'condition': price_info['condition'],
                 'priced': '1',
             }
+            if price_info.get('is_sealed'):
+                params['is_sealed'] = '1'
             create_url = reverse(
                 'buylists:buylistitem_create',
                 kwargs={'buylist_pk': buylist.pk},
@@ -601,7 +635,9 @@ def buylist_card_condition(request, buylist_pk):
     return render(request, 'buylists/buylist_card_condition.html', {
         'buylist': buylist,
         'card': card,
-        'condition_choices': BuylistItem.CONDITION_CHOICES,
+        'condition_choices': BuylistItem.condition_choices_for_product(
+            card['is_sealed'],
+        ),
         'selected_condition': selected_condition,
         'selected_printing': selected_printing,
         'printing_choices': ['Normal', 'Foil'],

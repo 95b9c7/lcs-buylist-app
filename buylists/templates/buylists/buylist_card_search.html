@@ -11,15 +11,15 @@
 <form method="get" class="card mb-4">
     <div class="card-body">
         <div class="row g-3 align-items-end">
-            <div class="col-md-6">
-                <label for="q" class="form-label">Card name</label>
+            <div class="col-md-5">
+                <label for="q" class="form-label">Product name</label>
                 <input
                     type="text"
                     class="form-control"
                     id="q"
                     name="q"
                     value="{{ query }}"
-                    placeholder="e.g. Charizard"
+                    placeholder="e.g. Charizard or Evolving Skies Booster Box"
                     autofocus
                 >
             </div>
@@ -33,7 +33,17 @@
                     <option value="onepiece" {% if game == "onepiece" %}selected{% endif %}>One Piece</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <label for="product_type" class="form-label">Type</label>
+                <select class="form-select" id="product_type" name="product_type">
+                    {% for value, label in product_type_choices %}
+                    <option value="{{ value }}" {% if product_type == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
                 <button type="submit" class="btn btn-primary w-100">Search</button>
             </div>
         </div>
@@ -55,6 +65,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>Name</th>
+                        <th>Type</th>
                         <th>Game</th>
                         <th>Set</th>
                         <th>#</th>
@@ -67,6 +78,13 @@
                     {% for card in results %}
                     <tr>
                         <td>{{ card.name }}</td>
+                        <td>
+                            {% if card.is_sealed %}
+                            <span class="badge bg-info text-dark">Sealed</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Single</span>
+                            {% endif %}
+                        </td>
                         <td>{{ card.game|default:"—" }}</td>
                         <td>{{ card.set|default:"—" }}</td>
                         <td>{{ card.number|default:"—" }}</td>
@@ -74,7 +92,7 @@
                         <td>{{ card.tcgplayerId|default:"—" }}</td>
                         <td class="text-end text-nowrap">
                             <a
-                                href="{% url 'buylists:buylist_card_condition' buylist_pk=buylist.pk %}?card_id={{ card.id|urlencode }}&card_name={{ card.name|urlencode }}&game={{ card.game|urlencode }}&set_name={{ card.set|urlencode }}&number={{ card.number|urlencode }}&rarity={{ card.rarity|urlencode }}&tcgplayer_id={{ card.tcgplayerId|urlencode }}"
+                                href="{% url 'buylists:buylist_card_condition' buylist_pk=buylist.pk %}?card_id={{ card.id|urlencode }}&card_name={{ card.name|urlencode }}&game={{ card.game|urlencode }}&set_name={{ card.set|urlencode }}&number={{ card.number|urlencode }}&rarity={{ card.rarity|urlencode }}&tcgplayer_id={{ card.tcgplayerId|urlencode }}{% if card.is_sealed %}&is_sealed=1{% endif %}"
                                 class="btn btn-sm btn-primary"
                             >
                                 Select
@@ -88,11 +106,11 @@
     </div>
 </div>
 {% elif query and not error_message %}
-<div class="alert alert-info">Enter a card name and click Search.</div>
+<div class="alert alert-info">Enter a product name and click Search.</div>
 {% endif %}
 
 <p class="mt-4">
-    <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-outline-secondary">Enter card manually</a>
+    <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-outline-secondary">Enter manually</a>
     <a href="{% url 'buylists:buylist_detail' pk=buylist.pk %}" class="btn btn-link">← Back to buylist</a>
 </p>
 {% endblock %}
