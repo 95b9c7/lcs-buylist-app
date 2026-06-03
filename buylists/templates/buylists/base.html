@@ -31,6 +31,11 @@
                         <a class="nav-link" href="{% url 'buylists:override_report' %}">Overrides</a>
                     </li>
                     {% endif %}
+                    {% if nav_can_view_paid_report %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'buylists:paid_report' %}">Paid</a>
+                    </li>
+                    {% endif %}
                     {% if nav_is_owner %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'buylists:pricing_rule_list' %}">Pricing Rules</a>

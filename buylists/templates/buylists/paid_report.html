@@ -1,0 +1,58 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Paid Buylists — LCS Buylist{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">Paid Buylists Report</h1>
+    <span class="badge bg-success">Manager / Owner</span>
+</div>
+
+<p class="text-muted">All buylists marked as Paid with payment method and amount recorded.</p>
+
+{% if paid_buylists %}
+<div class="alert alert-light border mb-4">
+    <strong>{{ paid_buylists|length }}</strong> paid buylist{{ paid_buylists|length|pluralize }}
+    · total amount paid: <strong>${{ total_paid|floatformat:2 }}</strong>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>Paid</th>
+                <th>Buylist</th>
+                <th>Customer</th>
+                <th>Method</th>
+                <th class="text-end">Amount paid</th>
+                <th class="text-end">Final offer</th>
+                <th>Recorded by</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for buylist in paid_buylists %}
+            <tr>
+                <td class="text-nowrap">{{ buylist.paid_at|date:"M j, Y g:i A" }}</td>
+                <td>#{{ buylist.pk }}</td>
+                <td>{{ buylist.customer.name }}</td>
+                <td>{{ buylist.get_payment_method_display }}</td>
+                <td class="text-end fw-semibold">${{ buylist.amount_paid|floatformat:2 }}</td>
+                <td class="text-end text-muted">${{ buylist.total_final_offer_value|floatformat:2 }}</td>
+                <td>{{ buylist.paid_by.username|default:"—" }}</td>
+                <td class="text-end">
+                    <a href="{% url 'buylists:buylist_detail' pk=buylist.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No paid buylists yet.</div>
+{% endif %}
+
+<p class="mt-4">
+    <a href="{% url 'buylists:dashboard' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
+</p>
+{% endblock %}

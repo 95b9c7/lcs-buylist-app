@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django import forms
+from django.utils import timezone
+
 from .models import Buylist, BuylistItem, Customer, PricingRule, round_money
 from .offer_rules import get_role_label, validate_final_offer
 from .permissions import user_is_manager_or_owner
@@ -59,8 +61,71 @@ class PricingRuleForm(BootstrapFormMixin, forms.ModelForm):
 class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = Buylist
-        fields = ['status']
-        labels = {'status': 'Update status'}
+        fields = ['status', 'payment_method', 'amount_paid']
+        labels = {
+            'status': 'Update status',
+            'payment_method': 'Payment method',
+            'amount_paid': 'Amount paid',
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.paid_by_user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.fields['payment_method'].required = False
+        self.fields['amount_paid'].required = False
+        self.fields['amount_paid'].widget = forms.NumberInput(
+            attrs={'step': '0.01', 'min': '0'}
+        )
+        self.fields['payment_method'].help_text = (
+            'Required when status is Paid.'
+        )
+        self.fields['amount_paid'].help_text = (
+            'Required when status is Paid. Use total final offer as a guide.'
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        status = cleaned.get('status')
+
+        if status == Buylist.STATUS_PAID:
+            if not cleaned.get('payment_method'):
+                self.add_error(
+                    'payment_method',
+                    'Payment method is required when marking a buylist as Paid.',
+                )
+            amount_paid = cleaned.get('amount_paid')
+            if amount_paid is None:
+                self.add_error(
+                    'amount_paid',
+                    'Amount paid is required when marking a buylist as Paid.',
+                )
+            else:
+                cleaned['amount_paid'] = round_money(amount_paid)
+
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        previous_status = None
+        if instance.pk:
+            previous_status = Buylist.objects.filter(pk=instance.pk).values_list(
+                'status', flat=True
+            ).first()
+
+        if instance.status == Buylist.STATUS_PAID:
+            if self.paid_by_user and self.paid_by_user.is_authenticated:
+                instance.paid_by = self.paid_by_user
+            if previous_status != Buylist.STATUS_PAID or not instance.paid_at:
+                instance.paid_at = timezone.now()
+        else:
+            instance.payment_method = ''
+            instance.amount_paid = None
+            instance.paid_at = None
+            instance.paid_by = None
+
+        if commit:
+            instance.save()
+        return instance
 
 
 class BuylistPaymentChoiceForm(BootstrapFormMixin, forms.ModelForm):

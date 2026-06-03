@@ -149,13 +149,16 @@ def buylist_create(request):
 @employee_required
 def buylist_detail(request, pk):
     buylist = get_object_or_404(
-        Buylist.objects.select_related('customer').prefetch_related(
+        Buylist.objects.select_related('customer', 'paid_by').prefetch_related(
             'items__override_by',
         ),
         pk=pk,
     )
     can_manage_settings = user_is_manager_or_owner(request.user)
-    status_form = BuylistStatusForm(instance=buylist) if can_manage_settings else None
+    status_form = (
+        BuylistStatusForm(instance=buylist, user=request.user)
+        if can_manage_settings else None
+    )
     payment_form = BuylistPaymentChoiceForm(instance=buylist) if can_manage_settings else None
     return render(request, 'buylists/buylist_detail.html', {
         'buylist': buylist,
@@ -234,7 +237,7 @@ def buylist_export_csv(request, pk):
 @employee_required
 def buylist_offer_sheet(request, pk):
     buylist = get_object_or_404(
-        Buylist.objects.select_related('customer').prefetch_related(
+        Buylist.objects.select_related('customer', 'paid_by').prefetch_related(
             'items__override_by',
         ),
         pk=pk,
@@ -249,12 +252,19 @@ def buylist_offer_sheet(request, pk):
 @require_POST
 def buylist_update_status(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
-    form = BuylistStatusForm(request.POST, instance=buylist)
+    form = BuylistStatusForm(request.POST, instance=buylist, user=request.user)
     if form.is_valid():
-        form.save()
-        messages.success(request, f'Status updated to {buylist.get_status_display()}.')
+        buylist = form.save()
+        if buylist.is_paid:
+            messages.success(
+                request,
+                f'Buylist marked Paid — ${buylist.amount_paid} via '
+                f'{buylist.get_payment_method_display()}.',
+            )
+        else:
+            messages.success(request, f'Status updated to {buylist.get_status_display()}.')
     else:
-        messages.error(request, 'Could not update status.')
+        messages.error(request, 'Could not update status. Check payment fields if marking Paid.')
     return redirect('buylists:buylist_detail', pk=pk)
 
 
@@ -331,6 +341,23 @@ def buylistitem_delete(request, buylist_pk, pk):
     return render(request, 'buylists/buylistitem_confirm_delete.html', {
         'buylist': buylist,
         'item': item,
+    })
+
+
+@manager_or_owner_required
+def paid_report(request):
+    paid_buylists = (
+        Buylist.objects.filter(status=Buylist.STATUS_PAID)
+        .select_related('customer', 'paid_by')
+        .prefetch_related('items')
+        .order_by('-paid_at')
+    )
+    total_paid = round_money(
+        sum(b.amount_paid for b in paid_buylists if b.amount_paid is not None)
+    )
+    return render(request, 'buylists/paid_report.html', {
+        'paid_buylists': paid_buylists,
+        'total_paid': total_paid,
     })
 
 

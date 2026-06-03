@@ -44,8 +44,22 @@
             <div class="text-muted small">Status</div>
             <div><span class="badge text-bg-secondary">{{ buylist.get_status_display }}</span></div>
         </div>
+        {% if buylist.is_paid %}
         <div class="col-sm-6 col-md-3">
-            <div class="text-muted small">Payment choice</div>
+            <div class="text-muted small">Payment method</div>
+            <div class="fw-semibold">{{ buylist.get_payment_method_display }}</div>
+        </div>
+        <div class="col-sm-6 col-md-3">
+            <div class="text-muted small">Amount paid</div>
+            <div class="fw-semibold">${{ buylist.amount_paid|floatformat:2 }}</div>
+        </div>
+        <div class="col-sm-6 col-md-3">
+            <div class="text-muted small">Paid on</div>
+            <div class="fw-semibold">{{ buylist.paid_at|date:"M j, Y" }}</div>
+        </div>
+        {% endif %}
+        <div class="col-sm-6 col-md-3">
+            <div class="text-muted small">Offer type (customer)</div>
             <div class="fw-semibold">
                 {% if buylist.payment_choice == 'cash' %}
                 <span class="badge text-bg-success">Cash (60%)</span>

@@ -36,17 +36,23 @@ class BuylistItemInline(admin.TabularInline):
 
 @admin.register(Buylist)
 class BuylistAdmin(admin.ModelAdmin):
-    list_display = ['id', 'customer', 'status', 'created_at', 'updated_at']
-    list_filter = ['status', ('created_at', admin.DateFieldListFilter)]
+    list_display = [
+        'id', 'customer', 'status', 'payment_method',
+        'amount_paid', 'paid_at', 'created_at',
+    ]
+    list_filter = ['status', 'payment_method', ('created_at', admin.DateFieldListFilter)]
     search_fields = ['customer__name']
     autocomplete_fields = ['customer']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = ['created_at', 'updated_at', 'paid_at', 'paid_by']
     inlines = [BuylistItemInline]
     list_per_page = 25
     date_hierarchy = 'created_at'
     fieldsets = (
         (None, {
             'fields': ('customer', 'status', 'payment_choice'),
+        }),
+        ('Store payment (when Paid)', {
+            'fields': ('payment_method', 'amount_paid', 'paid_at', 'paid_by'),
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

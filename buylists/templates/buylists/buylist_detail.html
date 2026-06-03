@@ -46,15 +46,36 @@
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="h6 text-muted mb-3">Buylist settings <span class="badge bg-secondary">Manager / Owner</span></h2>
-        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="row g-2 align-items-end mb-3">
+        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="mb-3">
             {% csrf_token %}
-            <div class="col-auto">
-                <label class="form-label mb-0">{{ status_form.status.label }}</label>
-                {{ status_form.status }}
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label mb-0">{{ status_form.status.label }}</label>
+                    {{ status_form.status }}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-0">{{ status_form.payment_method.label }}</label>
+                    {{ status_form.payment_method }}
+                    {% if status_form.payment_method.help_text %}
+                    <div class="form-text">{{ status_form.payment_method.help_text }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label mb-0">{{ status_form.amount_paid.label }}</label>
+                    {{ status_form.amount_paid }}
+                    {% if status_form.amount_paid.help_text %}
+                    <div class="form-text">{{ status_form.amount_paid.help_text }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-outline-primary w-100">Update status</button>
+                </div>
             </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-outline-primary">Update status</button>
-            </div>
+            {% for field in status_form %}
+            {% for error in field.errors %}
+            <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+            {% endfor %}
         </form>
         <form method="post" action="{% url 'buylists:buylist_update_payment_choice' pk=buylist.pk %}" class="row g-2 align-items-end">
             {% csrf_token %}
@@ -70,6 +91,26 @@
 </div>
 {% else %}
 <p class="text-muted small mb-4">Status and payment settings can be changed by a Manager or Owner.</p>
+{% endif %}
+
+{% if buylist.is_paid %}
+<div class="card mb-4 border-success">
+    <div class="card-body">
+        <h2 class="h6 text-success mb-3">Payment recorded</h2>
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Method</dt>
+            <dd class="col-sm-9">{{ buylist.get_payment_method_display }}</dd>
+            <dt class="col-sm-3">Amount paid</dt>
+            <dd class="col-sm-9 fw-semibold">${{ buylist.amount_paid|floatformat:2 }}</dd>
+            <dt class="col-sm-3">Total final offer</dt>
+            <dd class="col-sm-9">${{ buylist.total_final_offer_value|floatformat:2 }}</dd>
+            <dt class="col-sm-3">Paid at</dt>
+            <dd class="col-sm-9">{{ buylist.paid_at|date:"M j, Y g:i A" }}</dd>
+            <dt class="col-sm-3">Recorded by</dt>
+            <dd class="col-sm-9">{{ buylist.paid_by.username|default:"—" }}</dd>
+        </dl>
+    </div>
+</div>
 {% endif %}
 
 {% if buylist.items.all %}

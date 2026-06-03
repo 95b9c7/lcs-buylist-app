@@ -65,6 +65,40 @@ class Buylist(models.Model):
         blank=True,
         default='',
     )
+
+    PAYMENT_METHOD_CASH = 'cash'
+    PAYMENT_METHOD_STORE_CREDIT = 'store_credit'
+    PAYMENT_METHOD_TRADE = 'trade'
+    PAYMENT_METHOD_MIXED = 'mixed'
+
+    PAYMENT_METHOD_CHOICES = [
+        ('', 'Not paid yet'),
+        (PAYMENT_METHOD_CASH, 'Cash'),
+        (PAYMENT_METHOD_STORE_CREDIT, 'Store credit'),
+        (PAYMENT_METHOD_TRADE, 'Trade'),
+        (PAYMENT_METHOD_MIXED, 'Mixed'),
+    ]
+
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        blank=True,
+        default='',
+    )
+    amount_paid = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    paid_at = models.DateTimeField(null=True, blank=True)
+    paid_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='buylists_paid',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -108,6 +142,10 @@ class Buylist(models.Model):
     @property
     def override_item_count(self):
         return self.items.filter(override_at__isnull=False).count()
+
+    @property
+    def is_paid(self):
+        return self.status == self.STATUS_PAID
 
 
 class BuylistItem(models.Model):
