@@ -62,6 +62,11 @@ class Buylist(models.Model):
     def total_trade_offer_value(self):
         return sum(item.trade_offer_price for item in self.items.all())
 
+    @property
+    def total_offer_value(self):
+        """Trade credit total shown on customer offer sheets."""
+        return self.total_trade_offer_value
+
 
 class BuylistItem(models.Model):
     CONDITION_NM = 'NM'
@@ -129,6 +134,11 @@ class BuylistItem(models.Model):
     @property
     def line_market_value(self):
         return Decimal(self.quantity) * self.market_price
+
+    @property
+    def offer_price(self):
+        """Trade credit offer shown on customer offer sheets."""
+        return self.trade_offer_price
 
     def _base_offer_value(self):
         return (

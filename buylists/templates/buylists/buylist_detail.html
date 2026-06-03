@@ -15,7 +15,10 @@
             Store rates: <strong>60% cash</strong> · <strong>70% trade credit</strong>
         </p>
     </div>
-    <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-primary">Add Card</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'buylists:buylist_offer_sheet' pk=buylist.pk %}" class="btn btn-outline-dark" target="_blank">Print Offer Sheet</a>
+        <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-primary">Add Card</a>
+    </div>
 </div>
 
 <div class="card mb-4">

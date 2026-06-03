@@ -11,6 +11,11 @@ urlpatterns = [
     path('buylists/new/', views.buylist_create, name='buylist_create'),
     path('buylists/<int:pk>/', views.buylist_detail, name='buylist_detail'),
     path(
+        'buylists/<int:pk>/offer-sheet/',
+        views.buylist_offer_sheet,
+        name='buylist_offer_sheet',
+    ),
+    path(
         'buylists/<int:pk>/status/',
         views.buylist_update_status,
         name='buylist_update_status',

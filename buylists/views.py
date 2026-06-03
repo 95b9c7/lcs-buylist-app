@@ -63,6 +63,17 @@ def buylist_detail(request, pk):
     })
 
 
+def buylist_offer_sheet(request, pk):
+    buylist = get_object_or_404(
+        Buylist.objects.select_related('customer').prefetch_related('items'),
+        pk=pk,
+    )
+    return render(request, 'buylists/buylist_offer_sheet.html', {
+        'buylist': buylist,
+        'store_name': '[Your Store Name]',
+    })
+
+
 @require_POST
 def buylist_update_status(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
