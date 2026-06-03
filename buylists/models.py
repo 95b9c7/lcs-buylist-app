@@ -228,3 +228,35 @@ class BuylistItem(models.Model):
             self.final_offer_price = self.recommended_offer_price
 
         super().save(*args, **kwargs)
+
+
+class PricingRule(models.Model):
+    name = models.CharField(max_length=100)
+    min_market_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00'),
+    )
+    max_market_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Leave blank for no upper limit.',
+    )
+    offer_percent = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        help_text='Store rate as decimal (0.70 = 70%).',
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['min_market_price', 'name']
+        verbose_name = 'pricing rule'
+        verbose_name_plural = 'pricing rules'
+
+    def __str__(self):
+        if self.max_market_price is not None:
+            return f'{self.name} (${self.min_market_price}–${self.max_market_price})'
+        return f'{self.name} (${self.min_market_price}+)'
