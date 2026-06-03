@@ -5,6 +5,7 @@ from django.views.decorators.http import require_POST
 from .forms import (
     BuylistForm,
     BuylistItemForm,
+    BuylistPaymentChoiceForm,
     BuylistStatusForm,
     CustomerForm,
 )
@@ -57,9 +58,11 @@ def buylist_detail(request, pk):
         pk=pk,
     )
     status_form = BuylistStatusForm(instance=buylist)
+    payment_form = BuylistPaymentChoiceForm(instance=buylist)
     return render(request, 'buylists/buylist_detail.html', {
         'buylist': buylist,
         'status_form': status_form,
+        'payment_form': payment_form,
     })
 
 
@@ -83,6 +86,22 @@ def buylist_update_status(request, pk):
         messages.success(request, f'Status updated to {buylist.get_status_display()}.')
     else:
         messages.error(request, 'Could not update status.')
+    return redirect('buylists:buylist_detail', pk=pk)
+
+
+@require_POST
+def buylist_update_payment_choice(request, pk):
+    buylist = get_object_or_404(Buylist, pk=pk)
+    form = BuylistPaymentChoiceForm(request.POST, instance=buylist)
+    if form.is_valid():
+        form.save()
+        if buylist.payment_choice:
+            label = buylist.get_payment_choice_display()
+            messages.success(request, f'Payment choice set to {label}.')
+        else:
+            messages.success(request, 'Payment choice cleared.')
+    else:
+        messages.error(request, 'Could not update payment choice.')
     return redirect('buylists:buylist_detail', pk=pk)
 
 

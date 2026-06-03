@@ -15,6 +15,7 @@
             <tr>
                 <th>Customer</th>
                 <th>Status</th>
+                <th>Payment</th>
                 <th>Updated</th>
                 <th></th>
             </tr>
@@ -25,6 +26,15 @@
                 <td>{{ buylist.customer.name }}</td>
                 <td>
                     <span class="badge bg-secondary">{{ buylist.get_status_display }}</span>
+                </td>
+                <td>
+                    {% if buylist.payment_choice == 'cash' %}
+                    <span class="badge bg-success">Cash</span>
+                    {% elif buylist.payment_choice == 'trade' %}
+                    <span class="badge bg-info text-dark">Trade</span>
+                    {% else %}
+                    <span class="badge bg-light text-dark border">—</span>
+                    {% endif %}
                 </td>
                 <td>{{ buylist.updated_at|date:"M j, Y g:i A" }}</td>
                 <td class="text-end">

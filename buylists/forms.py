@@ -35,6 +35,13 @@ class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
         labels = {'status': 'Update status'}
 
 
+class BuylistPaymentChoiceForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Buylist
+        fields = ['payment_choice']
+        labels = {'payment_choice': 'Customer payment choice'}
+
+
 class BuylistItemForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = BuylistItem

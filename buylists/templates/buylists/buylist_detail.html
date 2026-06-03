@@ -9,6 +9,14 @@
         <p class="text-muted mb-0">
             Status:
             <span class="badge bg-primary">{{ buylist.get_status_display }}</span>
+            · Payment:
+            {% if buylist.payment_choice == 'cash' %}
+            <span class="badge bg-success">Cash (60%)</span>
+            {% elif buylist.payment_choice == 'trade' %}
+            <span class="badge bg-info text-dark">Trade credit (70%)</span>
+            {% else %}
+            <span class="badge bg-secondary">Not selected</span>
+            {% endif %}
             · Updated {{ buylist.updated_at|date:"M j, Y g:i A" }}
         </p>
         <p class="text-muted small mb-0">
@@ -23,14 +31,25 @@
 
 <div class="card mb-4">
     <div class="card-body">
-        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="row g-2 align-items-end">
+        <h2 class="h6 text-muted mb-3">Buylist settings</h2>
+        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="row g-2 align-items-end mb-3">
             {% csrf_token %}
             <div class="col-auto">
                 <label class="form-label mb-0">{{ status_form.status.label }}</label>
                 {{ status_form.status }}
             </div>
             <div class="col-auto">
-                <button type="submit" class="btn btn-outline-primary">Update</button>
+                <button type="submit" class="btn btn-outline-primary">Update status</button>
+            </div>
+        </form>
+        <form method="post" action="{% url 'buylists:buylist_update_payment_choice' pk=buylist.pk %}" class="row g-2 align-items-end">
+            {% csrf_token %}
+            <div class="col-auto">
+                <label class="form-label mb-0">{{ payment_form.payment_choice.label }}</label>
+                {{ payment_form.payment_choice }}
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-outline-primary">Save payment choice</button>
             </div>
         </form>
     </div>
@@ -46,8 +65,8 @@
                 <th class="text-end">Qty</th>
                 <th>Condition</th>
                 <th class="text-end">Market</th>
-                <th class="text-end">Cash (60%)</th>
-                <th class="text-end">Trade (70%)</th>
+                <th class="text-end{% if buylist.payment_choice == 'cash' %} table-success{% endif %}">Cash (60%){% if buylist.payment_choice == 'cash' %} ✓{% endif %}</th>
+                <th class="text-end{% if buylist.payment_choice == 'trade' %} table-success{% endif %}">Trade (70%){% if buylist.payment_choice == 'trade' %} ✓{% endif %}</th>
                 <th class="text-end">Line Market</th>
                 <th></th>
             </tr>
@@ -60,8 +79,8 @@
                 <td class="text-end">{{ item.quantity }}</td>
                 <td>{{ item.get_condition_display }}</td>
                 <td class="text-end">${{ item.market_price }}</td>
-                <td class="text-end">${{ item.cash_offer_price }}</td>
-                <td class="text-end">${{ item.trade_offer_price }}</td>
+                <td class="text-end{% if buylist.payment_choice == 'cash' %} table-success fw-semibold{% endif %}">${{ item.cash_offer_price }}</td>
+                <td class="text-end{% if buylist.payment_choice == 'trade' %} table-success fw-semibold{% endif %}">${{ item.trade_offer_price }}</td>
                 <td class="text-end">${{ item.line_market_value }}</td>
                 <td class="text-end text-nowrap">
                     <a href="{% url 'buylists:buylistitem_edit' buylist_pk=buylist.pk pk=item.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
@@ -73,8 +92,8 @@
         <tfoot class="table-light fw-semibold">
             <tr>
                 <td colspan="5" class="text-end">Totals</td>
-                <td class="text-end">${{ buylist.total_cash_offer_value }}</td>
-                <td class="text-end">${{ buylist.total_trade_offer_value }}</td>
+                <td class="text-end{% if buylist.payment_choice == 'cash' %} table-success{% endif %}">${{ buylist.total_cash_offer_value }}</td>
+                <td class="text-end{% if buylist.payment_choice == 'trade' %} table-success{% endif %}">${{ buylist.total_trade_offer_value }}</td>
                 <td class="text-end">${{ buylist.total_market_value }}</td>
                 <td></td>
             </tr>
@@ -90,9 +109,18 @@
                     <dt class="col-7">Total market value</dt>
                     <dd class="col-5 text-end">${{ buylist.total_market_value }}</dd>
                     <dt class="col-7">Total cash offer (60%)</dt>
-                    <dd class="col-5 text-end">${{ buylist.total_cash_offer_value }}</dd>
+                    <dd class="col-5 text-end{% if buylist.payment_choice == 'cash' %} fw-bold text-success fs-5{% endif %}">${{ buylist.total_cash_offer_value }}</dd>
                     <dt class="col-7">Total trade offer (70%)</dt>
-                    <dd class="col-5 text-end text-success fs-5">${{ buylist.total_trade_offer_value }}</dd>
+                    <dd class="col-5 text-end{% if buylist.payment_choice == 'trade' %} fw-bold text-success fs-5{% endif %}">${{ buylist.total_trade_offer_value }}</dd>
+                    {% if buylist.payment_choice_selected %}
+                    <dt class="col-7">Customer chose</dt>
+                    <dd class="col-5 text-end mb-0">
+                        <span class="badge {% if buylist.payment_choice == 'cash' %}bg-success{% else %}bg-info text-dark{% endif %}">
+                            {{ buylist.get_payment_choice_display }}
+                        </span>
+                        <div class="fs-5 fw-bold mt-1">${{ buylist.total_offer_value }}</div>
+                    </dd>
+                    {% endif %}
                 </dl>
             </div>
         </div>

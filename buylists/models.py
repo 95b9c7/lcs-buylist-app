@@ -31,6 +31,15 @@ class Buylist(models.Model):
         (STATUS_PAID, 'Paid'),
     ]
 
+    PAYMENT_CASH = 'cash'
+    PAYMENT_TRADE = 'trade'
+
+    PAYMENT_CHOICES = [
+        ('', 'Not selected'),
+        (PAYMENT_CASH, 'Cash (60%)'),
+        (PAYMENT_TRADE, 'Trade credit (70%)'),
+    ]
+
     customer = models.ForeignKey(
         Customer,
         on_delete=models.CASCADE,
@@ -40,6 +49,12 @@ class Buylist(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default=STATUS_DRAFT,
+    )
+    payment_choice = models.CharField(
+        max_length=10,
+        choices=PAYMENT_CHOICES,
+        blank=True,
+        default='',
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -63,9 +78,16 @@ class Buylist(models.Model):
         return sum(item.trade_offer_price for item in self.items.all())
 
     @property
+    def payment_choice_selected(self):
+        return bool(self.payment_choice)
+
+    @property
     def total_offer_value(self):
-        """Trade credit total shown on customer offer sheets."""
-        return self.total_trade_offer_value
+        if self.payment_choice == self.PAYMENT_CASH:
+            return self.total_cash_offer_value
+        if self.payment_choice == self.PAYMENT_TRADE:
+            return self.total_trade_offer_value
+        return None
 
 
 class BuylistItem(models.Model):
@@ -137,8 +159,12 @@ class BuylistItem(models.Model):
 
     @property
     def offer_price(self):
-        """Trade credit offer shown on customer offer sheets."""
-        return self.trade_offer_price
+        choice = self.buylist.payment_choice
+        if choice == Buylist.PAYMENT_CASH:
+            return self.cash_offer_price
+        if choice == Buylist.PAYMENT_TRADE:
+            return self.trade_offer_price
+        return None
 
     def _base_offer_value(self):
         return (

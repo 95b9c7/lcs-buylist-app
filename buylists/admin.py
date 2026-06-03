@@ -17,8 +17,8 @@ class BuylistItemInline(admin.TabularInline):
 
 @admin.register(Buylist)
 class BuylistAdmin(admin.ModelAdmin):
-    list_display = ['customer', 'status', 'created_at', 'updated_at']
-    list_filter = ['status']
+    list_display = ['customer', 'status', 'payment_choice', 'created_at', 'updated_at']
+    list_filter = ['status', 'payment_choice']
     search_fields = ['customer__name']
     inlines = [BuylistItemInline]
 

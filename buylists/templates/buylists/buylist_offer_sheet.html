@@ -44,6 +44,18 @@
             <div class="text-muted small">Status</div>
             <div><span class="badge text-bg-secondary">{{ buylist.get_status_display }}</span></div>
         </div>
+        <div class="col-sm-6 col-md-3">
+            <div class="text-muted small">Payment choice</div>
+            <div class="fw-semibold">
+                {% if buylist.payment_choice == 'cash' %}
+                <span class="badge text-bg-success">Cash (60%)</span>
+                {% elif buylist.payment_choice == 'trade' %}
+                <span class="badge text-bg-info text-dark">Trade credit (70%)</span>
+                {% else %}
+                <span class="text-muted">Not selected</span>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     {% if buylist.items.all %}
@@ -67,7 +79,9 @@
                     <td class="text-end">{{ item.quantity }}</td>
                     <td>{{ item.condition }}</td>
                     <td class="text-end">${{ item.market_price }}</td>
-                    <td class="text-end">${{ item.offer_price }}</td>
+                    <td class="text-end">
+                        {% if item.offer_price %}${{ item.offer_price }}{% else %}—{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -75,7 +89,9 @@
                 <tr>
                     <td colspan="4" class="text-end">Totals</td>
                     <td class="text-end">${{ buylist.total_market_value }}</td>
-                    <td class="text-end">${{ buylist.total_offer_value }}</td>
+                    <td class="text-end">
+                        {% if buylist.total_offer_value %}${{ buylist.total_offer_value }}{% else %}—{% endif %}
+                    </td>
                 </tr>
             </tfoot>
         </table>
@@ -88,8 +104,15 @@
                     <dl class="row mb-0">
                         <dt class="col-7">Total market value</dt>
                         <dd class="col-5 text-end mb-2">${{ buylist.total_market_value }}</dd>
-                        <dt class="col-7">Total offer value</dt>
-                        <dd class="col-5 text-end mb-0 fs-5 fw-bold text-success">${{ buylist.total_offer_value }}</dd>
+                        <dt class="col-7">
+                            Total offer value
+                            {% if buylist.payment_choice_selected %}
+                            <span class="d-block small fw-normal text-muted">({{ buylist.get_payment_choice_display }})</span>
+                            {% endif %}
+                        </dt>
+                        <dd class="col-5 text-end mb-0 fs-5 fw-bold text-success">
+                            {% if buylist.total_offer_value %}${{ buylist.total_offer_value }}{% else %}—{% endif %}
+                        </dd>
                     </dl>
                 </div>
             </div>
