@@ -1,0 +1,28 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}{{ title }} — LCS Buylist{% endblock %}
+
+{% block content %}
+<h1 class="h2 mb-1">{{ title }}</h1>
+<p class="text-muted mb-4">Buylist for {{ buylist.customer.name }}</p>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    <div class="row">
+        {% for field in form %}
+        <div class="col-md-6 mb-3">
+            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+            <div class="form-text">{{ field.help_text }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+            <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-primary">Save Card</button>
+    <a href="{% url 'buylists:buylist_detail' pk=buylist.pk %}" class="btn btn-outline-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Customers — LCS Buylist{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">Customers</h1>
+    <a href="{% url 'buylists:customer_create' %}" class="btn btn-primary">New Customer</a>
+</div>
+
+{% if customers %}
+<div class="table-responsive">
+    <table class="table table-striped align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr>
+                <td>{{ customer.name }}</td>
+                <td>{{ customer.phone|default:"—" }}</td>
+                <td>{{ customer.email|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">
+    No customers yet. <a href="{% url 'buylists:customer_create' %}">Add a customer</a> before creating a buylist.
+</div>
+{% endif %}
+{% endblock %}
