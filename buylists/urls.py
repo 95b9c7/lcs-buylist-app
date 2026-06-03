@@ -35,6 +35,11 @@ urlpatterns = [
         name='buylist_update_payment_choice',
     ),
     path(
+        'buylists/<int:pk>/unlock/',
+        views.buylist_unlock_items,
+        name='buylist_unlock_items',
+    ),
+    path(
         'buylists/<int:buylist_pk>/items/add/',
         views.buylistitem_create,
         name='buylistitem_create',

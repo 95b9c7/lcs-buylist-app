@@ -1,9 +1,12 @@
 import csv
 import re
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import messages
-from django.db.models import Count, DecimalField, Q, Sum, Value
+from django.utils import timezone
+from django.db.models import Count, DecimalField, F, Q, Sum, Value
+from django.db.models.expressions import ExpressionWrapper
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -14,20 +17,124 @@ from .forms import (
     BuylistItemForm,
     BuylistPaymentChoiceForm,
     BuylistStatusForm,
+    BuylistUnlockForm,
     CustomerForm,
     PricingRuleForm,
 )
 from .models import Buylist, BuylistItem, Customer, PricingRule, round_money
+from .buylist_locking import (
+    can_edit_buylist_items,
+    can_unlock_buylist,
+    lock_status_message,
+    show_locked_badge,
+)
 from .permissions import (
     employee_required,
     manager_or_owner_required,
     owner_required,
     user_is_manager_or_owner,
+    user_is_owner,
 )
+from django.core.exceptions import PermissionDenied
 
 
 def permission_denied_view(request, exception):
     return render(request, 'buylists/403.html', status=403)
+
+
+def _check_can_edit_items(buylist, user):
+    if not can_edit_buylist_items(buylist, user):
+        raise PermissionDenied(lock_status_message(buylist, user))
+
+
+def _line_market_value_expression():
+    return ExpressionWrapper(
+        F('quantity') * F('market_price'),
+        output_field=DecimalField(max_digits=12, decimal_places=2),
+    )
+
+
+def _money_zero():
+    return Value(
+        Decimal('0.00'),
+        output_field=DecimalField(max_digits=12, decimal_places=2),
+    )
+
+
+def _owner_dashboard_context():
+    """Aggregate metrics for the owner dashboard section."""
+    line_market = _line_market_value_expression()
+    money_zero = _money_zero()
+
+    item_totals = BuylistItem.objects.aggregate(
+        total_market=Coalesce(Sum(line_market), money_zero),
+        total_offer=Coalesce(Sum('final_offer_price'), money_zero),
+    )
+    accepted_offer = BuylistItem.objects.filter(
+        buylist__status=Buylist.STATUS_ACCEPTED,
+    ).aggregate(
+        total=Coalesce(Sum('final_offer_price'), money_zero),
+    )
+    paid_total = Buylist.objects.filter(
+        status=Buylist.STATUS_PAID,
+    ).aggregate(
+        total=Coalesce(Sum('amount_paid'), money_zero),
+    )
+
+    total_market_value = round_money(item_totals['total_market'])
+    total_offer_value = round_money(item_totals['total_offer'])
+    total_accepted_offer_value = round_money(accepted_offer['total'])
+    total_paid_amount = round_money(paid_total['total'])
+
+    average_offer_percent = None
+    if total_market_value > 0:
+        average_offer_percent = round(
+            float(total_offer_value / total_market_value * 100),
+            1,
+        )
+
+    now = timezone.now()
+    week_start = now.replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    ) - timedelta(days=now.weekday())
+
+    buylist_stats = Buylist.objects.aggregate(
+        total_buylists=Count('id'),
+        buylists_this_week=Count('id', filter=Q(created_at__gte=week_start)),
+    )
+
+    status_counts = {
+        row['status']: row['count']
+        for row in Buylist.objects.values('status').annotate(count=Count('id'))
+    }
+    status_breakdown = [
+        {
+            'status': value,
+            'label': label,
+            'count': status_counts.get(value, 0),
+        }
+        for value, label in Buylist.STATUS_CHOICES
+    ]
+
+    recent_buylists = (
+        Buylist.objects.select_related('customer')
+        .prefetch_related('items')
+        .order_by('-updated_at')[:10]
+    )
+
+    return {
+        'owner_metrics': {
+            'total_buylists': buylist_stats['total_buylists'],
+            'buylists_this_week': buylist_stats['buylists_this_week'],
+            'total_market_value': total_market_value,
+            'total_offer_value': total_offer_value,
+            'total_accepted_offer_value': total_accepted_offer_value,
+            'total_paid_amount': total_paid_amount,
+            'average_offer_percent': average_offer_percent,
+        },
+        'status_breakdown': status_breakdown,
+        'recent_buylists': recent_buylists,
+    }
 
 
 @employee_required
@@ -49,12 +156,17 @@ def dashboard(request):
 
     buylists = buylists[:50]
 
-    return render(request, 'buylists/dashboard.html', {
+    context = {
         'buylists': buylists,
         'search_query': search_query,
         'status_filter': status_filter,
         'status_choices': Buylist.STATUS_CHOICES,
-    })
+        'show_owner_metrics': user_is_owner(request.user),
+    }
+    if context['show_owner_metrics']:
+        context.update(_owner_dashboard_context())
+
+    return render(request, 'buylists/dashboard.html', context)
 
 
 @employee_required
@@ -149,22 +261,33 @@ def buylist_create(request):
 @employee_required
 def buylist_detail(request, pk):
     buylist = get_object_or_404(
-        Buylist.objects.select_related('customer', 'paid_by').prefetch_related(
+        Buylist.objects.select_related(
+            'customer', 'paid_by', 'unlocked_by',
+        ).prefetch_related(
             'items__override_by',
         ),
         pk=pk,
     )
     can_manage_settings = user_is_manager_or_owner(request.user)
+    can_edit_items = can_edit_buylist_items(buylist, request.user)
     status_form = (
         BuylistStatusForm(instance=buylist, user=request.user)
         if can_manage_settings else None
     )
     payment_form = BuylistPaymentChoiceForm(instance=buylist) if can_manage_settings else None
+    unlock_form = (
+        BuylistUnlockForm()
+        if can_unlock_buylist(buylist, request.user) else None
+    )
     return render(request, 'buylists/buylist_detail.html', {
         'buylist': buylist,
         'status_form': status_form,
         'payment_form': payment_form,
+        'unlock_form': unlock_form,
         'can_manage_settings': can_manage_settings,
+        'can_edit_items': can_edit_items,
+        'show_locked_badge': show_locked_badge(buylist, request.user),
+        'lock_message': lock_status_message(buylist, request.user),
         'override_item_count': buylist.override_item_count,
     })
 
@@ -268,6 +391,25 @@ def buylist_update_status(request, pk):
     return redirect('buylists:buylist_detail', pk=pk)
 
 
+@owner_required
+@require_POST
+def buylist_unlock_items(request, pk):
+    buylist = get_object_or_404(Buylist, pk=pk)
+    if not can_unlock_buylist(buylist, request.user):
+        raise PermissionDenied('Only an Owner can unlock this buylist.')
+
+    form = BuylistUnlockForm(request.POST)
+    if form.is_valid():
+        buylist.unlock_reason = form.cleaned_data['unlock_reason']
+        buylist.unlocked_by = request.user
+        buylist.unlocked_at = timezone.now()
+        buylist.save()
+        messages.success(request, 'Buylist unlocked for item editing.')
+    else:
+        messages.error(request, 'Unlock reason is required.')
+    return redirect('buylists:buylist_detail', pk=pk)
+
+
 @manager_or_owner_required
 @require_POST
 def buylist_update_payment_choice(request, pk):
@@ -290,6 +432,7 @@ def buylist_update_payment_choice(request, pk):
 @employee_required
 def buylistitem_create(request, buylist_pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
+    _check_can_edit_items(buylist, request.user)
     if request.method == 'POST':
         form = BuylistItemForm(request.POST, buylist=buylist, user=request.user)
         if form.is_valid():
@@ -310,6 +453,7 @@ def buylistitem_create(request, buylist_pk):
 @employee_required
 def buylistitem_edit(request, buylist_pk, pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
+    _check_can_edit_items(buylist, request.user)
     item = get_object_or_404(BuylistItem, pk=pk, buylist=buylist)
     if request.method == 'POST':
         form = BuylistItemForm(
@@ -332,6 +476,7 @@ def buylistitem_edit(request, buylist_pk, pk):
 @employee_required
 def buylistitem_delete(request, buylist_pk, pk):
     buylist = get_object_or_404(Buylist, pk=buylist_pk)
+    _check_can_edit_items(buylist, request.user)
     item = get_object_or_404(BuylistItem, pk=pk, buylist=buylist)
     if request.method == 'POST':
         card_name = item.card_name

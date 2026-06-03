@@ -9,6 +9,11 @@
         <p class="text-muted mb-0">
             Status:
             <span class="badge bg-primary">{{ buylist.get_status_display }}</span>
+            {% if show_locked_badge %}
+            <span class="badge bg-dark">Locked</span>
+            {% elif buylist.is_unlocked %}
+            <span class="badge bg-warning text-dark">Unlocked</span>
+            {% endif %}
             · Payment:
             {% if buylist.payment_choice == 'cash' %}
             <span class="badge bg-success">Cash (60%)</span>
@@ -26,9 +31,49 @@
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'buylists:buylist_offer_sheet' pk=buylist.pk %}" class="btn btn-outline-dark" target="_blank">Print Offer Sheet</a>
         <a href="{% url 'buylists:buylist_export_csv' pk=buylist.pk %}" class="btn btn-outline-secondary">Export CSV</a>
+        {% if can_edit_items %}
         <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-primary">Add Card</a>
+        {% endif %}
     </div>
 </div>
+
+{% if lock_message %}
+<div class="alert alert-secondary">{{ lock_message }}</div>
+{% endif %}
+
+{% if buylist.is_unlocked %}
+<div class="alert alert-warning mb-4">
+    <strong>Unlocked for editing</strong>
+    — {{ buylist.unlock_reason }}
+    {% if buylist.unlocked_by %} · by {{ buylist.unlocked_by.username }}{% endif %}
+    {% if buylist.unlocked_at %} · {{ buylist.unlocked_at|date:"M j, Y g:i A" }}{% endif %}
+</div>
+{% endif %}
+
+{% if unlock_form %}
+<div class="card mb-4 border-warning">
+    <div class="card-body">
+        <h2 class="h6 mb-3">Unlock items <span class="badge bg-warning text-dark">Owner</span></h2>
+        <p class="small text-muted mb-3">
+            Accepted buylists are locked. Unlock to allow staff to add, edit, or delete cards.
+        </p>
+        <form method="post" action="{% url 'buylists:buylist_unlock_items' pk=buylist.pk %}">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label" for="id_unlock_reason">{{ unlock_form.unlock_reason.label }}</label>
+                {{ unlock_form.unlock_reason }}
+                {% if unlock_form.unlock_reason.help_text %}
+                <div class="form-text">{{ unlock_form.unlock_reason.help_text }}</div>
+                {% endif %}
+                {% for error in unlock_form.unlock_reason.errors %}
+                <div class="text-danger small">{{ error }}</div>
+                {% endfor %}
+            </div>
+            <button type="submit" class="btn btn-warning">Unlock for editing</button>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 {% if override_item_count %}
 <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -46,45 +91,52 @@
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="h6 text-muted mb-3">Buylist settings <span class="badge bg-secondary">Manager / Owner</span></h2>
-        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="mb-3">
+        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="mb-0">
             {% csrf_token %}
-            <div class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label mb-0">{{ status_form.status.label }}</label>
+            <div class="row g-3 align-items-start">
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" for="{{ status_form.status.id_for_label }}">{{ status_form.status.label }}</label>
                     {{ status_form.status }}
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label mb-0">{{ status_form.payment_method.label }}</label>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" for="{{ status_form.payment_method.id_for_label }}">{{ status_form.payment_method.label }}</label>
                     {{ status_form.payment_method }}
                     {% if status_form.payment_method.help_text %}
                     <div class="form-text">{{ status_form.payment_method.help_text }}</div>
                     {% endif %}
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label mb-0">{{ status_form.amount_paid.label }}</label>
-                    {{ status_form.amount_paid }}
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label d-block" for="{{ status_form.amount_paid.id_for_label }}">{{ status_form.amount_paid.label }}</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        {{ status_form.amount_paid }}
+                    </div>
                     {% if status_form.amount_paid.help_text %}
                     <div class="form-text">{{ status_form.amount_paid.help_text }}</div>
                     {% endif %}
                 </div>
-                <div class="col-md-3">
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" aria-hidden="true">&nbsp;</label>
                     <button type="submit" class="btn btn-outline-primary w-100">Update status</button>
                 </div>
             </div>
             {% for field in status_form %}
             {% for error in field.errors %}
-            <div class="text-danger small">{{ error }}</div>
+            <div class="text-danger small mt-1">{{ error }}</div>
             {% endfor %}
             {% endfor %}
         </form>
-        <form method="post" action="{% url 'buylists:buylist_update_payment_choice' pk=buylist.pk %}" class="row g-2 align-items-end">
+        <form method="post" action="{% url 'buylists:buylist_update_payment_choice' pk=buylist.pk %}" class="mt-4 pt-4 border-top">
             {% csrf_token %}
-            <div class="col-auto">
-                <label class="form-label mb-0">{{ payment_form.payment_choice.label }}</label>
-                {{ payment_form.payment_choice }}
-            </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-outline-primary">Save payment choice</button>
+            <div class="row g-3 align-items-start">
+                <div class="col-sm-6 col-lg-4">
+                    <label class="form-label" for="{{ payment_form.payment_choice.id_for_label }}">{{ payment_form.payment_choice.label }}</label>
+                    {{ payment_form.payment_choice }}
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" aria-hidden="true">&nbsp;</label>
+                    <button type="submit" class="btn btn-outline-primary w-100">Save payment choice</button>
+                </div>
             </div>
         </form>
     </div>
@@ -148,8 +200,12 @@
                 <td class="text-end fw-semibold">${{ item.final_offer_price }}</td>
                 <td class="text-end">${{ item.line_market_value }}</td>
                 <td class="text-end text-nowrap">
+                    {% if can_edit_items %}
                     <a href="{% url 'buylists:buylistitem_edit' buylist_pk=buylist.pk pk=item.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
                     <a href="{% url 'buylists:buylistitem_delete' buylist_pk=buylist.pk pk=item.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                    {% else %}
+                    <span class="text-muted small">Locked</span>
+                    {% endif %}
                 </td>
             </tr>
             {% if item.has_override_record %}
@@ -198,7 +254,11 @@
 {% else %}
 <div class="alert alert-info">
     No cards on this buylist yet.
+    {% if can_edit_items %}
     <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}">Add the first card</a>.
+    {% else %}
+    Cards cannot be added while this buylist is locked.
+    {% endif %}
 </div>
 {% endif %}
 

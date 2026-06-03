@@ -8,6 +8,148 @@
     <a href="{% url 'buylists:buylist_create' %}" class="btn btn-primary">New Buylist</a>
 </div>
 
+{% if show_owner_metrics %}
+<section class="mb-4">
+    <h2 class="h5 text-muted mb-3">Store overview <span class="badge bg-secondary">Owner</span></h2>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total buylists</div>
+                    <div class="fs-4 fw-semibold">{{ owner_metrics.total_buylists }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Created this week</div>
+                    <div class="fs-4 fw-semibold">{{ owner_metrics.buylists_this_week }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total market value</div>
+                    <div class="fs-4 fw-semibold">${{ owner_metrics.total_market_value|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total offer value</div>
+                    <div class="fs-4 fw-semibold">${{ owner_metrics.total_offer_value|floatformat:2 }}</div>
+                    <div class="text-muted small">Final offers (all buylists)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Accepted offer value</div>
+                    <div class="fs-4 fw-semibold">${{ owner_metrics.total_accepted_offer_value|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total paid amount</div>
+                    <div class="fs-4 fw-semibold">${{ owner_metrics.total_paid_amount|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Average offer %</div>
+                    <div class="fs-4 fw-semibold">
+                        {% if owner_metrics.average_offer_percent is not None %}
+                        {{ owner_metrics.average_offer_percent }}%
+                        {% else %}
+                        —
+                        {% endif %}
+                    </div>
+                    <div class="text-muted small">Final offer ÷ market value</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">Status breakdown</div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Status</th>
+                                    <th class="text-end">Count</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in status_breakdown %}
+                                <tr>
+                                    <td>{{ row.label }}</td>
+                                    <td class="text-end">{{ row.count }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-header">Recent activity</div>
+                <div class="card-body p-0">
+                    {% if recent_buylists %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Customer</th>
+                                    <th>Status</th>
+                                    <th>Updated</th>
+                                    <th class="text-end">Market</th>
+                                    <th class="text-end">Offer</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for buylist in recent_buylists %}
+                                <tr>
+                                    <td>{{ buylist.pk }}</td>
+                                    <td>{{ buylist.customer.name }}</td>
+                                    <td><span class="badge bg-secondary">{{ buylist.get_status_display }}</span></td>
+                                    <td>{{ buylist.updated_at|date:"M j, Y g:i A" }}</td>
+                                    <td class="text-end">${{ buylist.total_market_value|floatformat:2 }}</td>
+                                    <td class="text-end">${{ buylist.total_offer_value|floatformat:2 }}</td>
+                                    <td class="text-end">
+                                        <a href="{% url 'buylists:buylist_detail' pk=buylist.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0 p-3">No buylist activity yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<hr class="mb-4">
+{% endif %}
+
 <form method="get" class="card mb-4">
     <div class="card-body">
         <div class="row g-2 align-items-end">

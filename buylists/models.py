@@ -99,6 +99,15 @@ class Buylist(models.Model):
         blank=True,
         related_name='buylists_paid',
     )
+    unlock_reason = models.TextField(blank=True)
+    unlocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='buylists_unlocked',
+    )
+    unlocked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -146,6 +155,15 @@ class Buylist(models.Model):
     @property
     def is_paid(self):
         return self.status == self.STATUS_PAID
+
+    @property
+    def is_unlocked(self):
+        return bool(self.unlocked_at)
+
+    def clear_item_unlock(self):
+        self.unlock_reason = ''
+        self.unlocked_by = None
+        self.unlocked_at = None
 
 
 class BuylistItem(models.Model):

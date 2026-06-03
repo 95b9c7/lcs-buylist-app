@@ -43,7 +43,10 @@ class BuylistAdmin(admin.ModelAdmin):
     list_filter = ['status', 'payment_method', ('created_at', admin.DateFieldListFilter)]
     search_fields = ['customer__name']
     autocomplete_fields = ['customer']
-    readonly_fields = ['created_at', 'updated_at', 'paid_at', 'paid_by']
+    readonly_fields = [
+        'created_at', 'updated_at', 'paid_at', 'paid_by',
+        'unlocked_at', 'unlocked_by',
+    ]
     inlines = [BuylistItemInline]
     list_per_page = 25
     date_hierarchy = 'created_at'
@@ -53,6 +56,10 @@ class BuylistAdmin(admin.ModelAdmin):
         }),
         ('Store payment (when Paid)', {
             'fields': ('payment_method', 'amount_paid', 'paid_at', 'paid_by'),
+        }),
+        ('Item unlock (Accepted)', {
+            'fields': ('unlock_reason', 'unlocked_by', 'unlocked_at'),
+            'classes': ('collapse',),
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

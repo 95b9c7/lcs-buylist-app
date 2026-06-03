@@ -73,9 +73,11 @@ class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['payment_method'].required = False
         self.fields['amount_paid'].required = False
-        self.fields['amount_paid'].widget = forms.NumberInput(
-            attrs={'step': '0.01', 'min': '0'}
-        )
+        self.fields['amount_paid'].widget.attrs.update({
+            'step': '0.01',
+            'min': '0',
+            'class': 'form-control',
+        })
         self.fields['payment_method'].help_text = (
             'Required when status is Paid.'
         )
@@ -123,9 +125,20 @@ class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
             instance.paid_at = None
             instance.paid_by = None
 
+        if instance.status != Buylist.STATUS_ACCEPTED:
+            instance.clear_item_unlock()
+
         if commit:
             instance.save()
         return instance
+
+
+class BuylistUnlockForm(BootstrapFormMixin, forms.Form):
+    unlock_reason = forms.CharField(
+        widget=forms.Textarea(attrs={'rows': 3}),
+        label='Unlock reason',
+        help_text='Required. Explain why items on this Accepted buylist may be edited.',
+    )
 
 
 class BuylistPaymentChoiceForm(BootstrapFormMixin, forms.ModelForm):
