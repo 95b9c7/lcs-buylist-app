@@ -1,7 +1,8 @@
 import csv
 import re
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.utils import timezone
@@ -10,6 +11,7 @@ from django.db.models.expressions import ExpressionWrapper
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from .forms import (
@@ -23,6 +25,13 @@ from .forms import (
 )
 from .activity import log_buylist_activity
 from .models import Buylist, BuylistActivity, BuylistItem, Customer, PricingRule, round_money
+from .services.justtcg import (
+    JustTCGKeyMissingError,
+    JustTCGPriceMissingError,
+    JustTCGRequestError,
+    get_condition_price,
+    search_cards,
+)
 from .buylist_locking import (
     can_edit_buylist_items,
     can_unlock_buylist,
@@ -452,8 +461,7 @@ def buylist_update_payment_choice(request, pk):
     form = BuylistPaymentChoiceForm(request.POST, instance=buylist)
     if form.is_valid():
         form.save()
-        for item in buylist.items.all():
-            item.save(override_user=request.user)
+        buylist.recalculate_offer_allocations(override_user=request.user)
         if buylist.payment_choice:
             label = buylist.get_payment_choice_display()
             messages.success(request, f'Payment choice set to {label}.')
@@ -462,6 +470,144 @@ def buylist_update_payment_choice(request, pk):
     else:
         messages.error(request, 'Could not update payment choice.')
     return redirect('buylists:buylist_detail', pk=pk)
+
+
+def _card_search_initial(request):
+    """Build form initial data from JustTCG card selection query params."""
+    initial = {}
+    card_name = request.GET.get('card_name', '').strip()
+    set_name = request.GET.get('set_name', '').strip()
+    market_price = request.GET.get('market_price', '').strip()
+    condition = request.GET.get('condition', '').strip()
+
+    if card_name:
+        initial['card_name'] = card_name
+    if set_name:
+        initial['set_name'] = set_name
+    if market_price:
+        try:
+            initial['market_price'] = Decimal(market_price)
+        except (InvalidOperation, TypeError):
+            pass
+    if condition:
+        initial['condition'] = condition
+    if request.GET.get('priced') == '1':
+        # JustTCG market_price already reflects the selected condition.
+        initial['condition_percent'] = Decimal('1.00')
+
+    return initial
+
+
+def _pricing_error_context(exc):
+    if isinstance(exc, JustTCGKeyMissingError):
+        return (
+            'missing_key',
+            'JUSTTCG_API_KEY is not set. Add your API key to .env and restart the server.',
+        )
+    if isinstance(exc, JustTCGPriceMissingError):
+        return 'missing_price', str(exc)
+    if isinstance(exc, JustTCGRequestError):
+        return 'request_failed', str(exc)
+    return 'request_failed', str(exc)
+
+
+@employee_required
+def buylist_card_search(request, buylist_pk):
+    buylist = get_object_or_404(Buylist, pk=buylist_pk)
+    _check_can_edit_items(buylist, request.user)
+
+    query = request.GET.get('q', '').strip()
+    game = request.GET.get('game', 'pokemon').strip() or 'pokemon'
+    results = []
+    error_type = None
+    error_message = None
+
+    if query:
+        try:
+            results = search_cards(query, game=game)
+            if not results:
+                error_type = 'no_results'
+                error_message = f'No cards found for "{query}". Try a different name.'
+        except JustTCGKeyMissingError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+        except JustTCGRequestError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+
+    return render(request, 'buylists/buylist_card_search.html', {
+        'buylist': buylist,
+        'query': query,
+        'game': game,
+        'results': results,
+        'error_type': error_type,
+        'error_message': error_message,
+    })
+
+
+@employee_required
+def buylist_card_condition(request, buylist_pk):
+    buylist = get_object_or_404(Buylist, pk=buylist_pk)
+    _check_can_edit_items(buylist, request.user)
+
+    card = {
+        'id': request.GET.get('card_id', request.POST.get('card_id', '')).strip(),
+        'name': request.GET.get('card_name', request.POST.get('card_name', '')).strip(),
+        'game': request.GET.get('game', request.POST.get('game', '')).strip(),
+        'set': request.GET.get('set_name', request.POST.get('set_name', '')).strip(),
+        'number': request.GET.get('number', request.POST.get('number', '')).strip(),
+        'rarity': request.GET.get('rarity', request.POST.get('rarity', '')).strip(),
+        'tcgplayerId': request.GET.get(
+            'tcgplayer_id', request.POST.get('tcgplayer_id', ''),
+        ).strip(),
+    }
+    error_type = None
+    error_message = None
+    selected_condition = BuylistItem.CONDITION_NM
+    selected_printing = ''
+
+    if not card['id']:
+        error_type = 'request_failed'
+        error_message = 'No card was selected. Search again and pick a card.'
+
+    if request.method == 'POST' and card['id']:
+        selected_condition = request.POST.get(
+            'condition', BuylistItem.CONDITION_NM,
+        )
+        selected_printing = request.POST.get('printing', '').strip()
+        try:
+            price_info = get_condition_price(
+                card['id'],
+                selected_condition,
+                printing=selected_printing or None,
+            )
+            params = {
+                'card_name': price_info['card_name'],
+                'set_name': price_info['set_name'],
+                'market_price': str(price_info['price']),
+                'condition': price_info['condition'],
+                'priced': '1',
+            }
+            create_url = reverse(
+                'buylists:buylistitem_create',
+                kwargs={'buylist_pk': buylist.pk},
+            )
+            return redirect(f'{create_url}?{urlencode(params)}')
+        except JustTCGKeyMissingError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+        except JustTCGPriceMissingError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+        except JustTCGRequestError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+
+    return render(request, 'buylists/buylist_card_condition.html', {
+        'buylist': buylist,
+        'card': card,
+        'condition_choices': BuylistItem.CONDITION_CHOICES,
+        'selected_condition': selected_condition,
+        'selected_printing': selected_printing,
+        'printing_choices': ['Normal', 'Foil'],
+        'error_type': error_type,
+        'error_message': error_message,
+    })
 
 
 @employee_required
@@ -483,11 +629,28 @@ def buylistitem_create(request, buylist_pk):
             messages.success(request, f'Added "{item.card_name}".')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
-        form = BuylistItemForm(buylist=buylist, user=request.user)
+        search_initial = _card_search_initial(request)
+        form = BuylistItemForm(
+            buylist=buylist,
+            user=request.user,
+            initial=search_initial or None,
+        )
+    search_initial = _card_search_initial(request) if request.method != 'POST' else {}
+    price_missing = (
+        request.GET.get('price_missing') == '1'
+        or (
+            request.method != 'POST'
+            and search_initial
+            and 'market_price' not in search_initial
+        )
+    )
     return render(request, 'buylists/buylistitem_form.html', {
         'form': form,
         'buylist': buylist,
         'title': 'Add Card',
+        'from_card_search': bool(search_initial),
+        'justtcg_priced': request.GET.get('priced') == '1',
+        'price_missing': price_missing,
     })
 
 
@@ -540,6 +703,7 @@ def buylistitem_delete(request, buylist_pk, pk):
     if request.method == 'POST':
         card_name = item.card_name
         item.delete()
+        buylist.recalculate_offer_allocations(override_user=request.user)
         log_buylist_activity(
             buylist,
             request.user,

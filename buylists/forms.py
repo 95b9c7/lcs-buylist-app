@@ -184,9 +184,12 @@ class BuylistItemForm(BootstrapFormMixin, forms.ModelForm):
             self.fields.pop('final_offer_price')
             self.fields.pop('override_reason')
             condition = self.initial.get('condition', BuylistItem.CONDITION_NM)
-            self.fields['condition_percent'].initial = (
-                BuylistItem.condition_percent_for(condition)
-            )
+            if 'condition_percent' in self.initial:
+                self.fields['condition_percent'].initial = self.initial['condition_percent']
+            else:
+                self.fields['condition_percent'].initial = (
+                    BuylistItem.condition_percent_for(condition)
+                )
         elif self.buylist and not self.buylist.payment_choice_selected:
             self.fields['final_offer_price'].help_text += (
                 ' Payment choice not set; recommended uses 70% trade rate.'
@@ -214,7 +217,10 @@ class BuylistItemForm(BootstrapFormMixin, forms.ModelForm):
             return cleaned
 
         item = self._build_item_for_recommended(cleaned)
-        recommended = item.calculate_recommended_offer_price()
+        recommended = self.buylist.estimate_item_recommended_offer(
+            item,
+            replace_pk=self.instance.pk,
+        )
         final = round_money(cleaned.get('final_offer_price'))
         cleaned['final_offer_price'] = final
         override_reason = cleaned.get('override_reason', '')
@@ -232,10 +238,6 @@ class BuylistItemForm(BootstrapFormMixin, forms.ModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-
-        if self.instance.pk and 'recommended_offer_price' in self.cleaned_data:
-            instance.recommended_offer_price = self.cleaned_data['recommended_offer_price']
-
         if commit:
             instance.save(override_user=self.user)
         return instance

@@ -118,22 +118,35 @@ class Buylist(models.Model):
         return f'{self.customer.name} — {self.get_status_display()}'
 
     @property
+    def total_adjusted_market_value(self):
+        """Sum of condition-adjusted line values before the offer rate."""
+        return round_money(
+            sum(item.adjusted_line_value for item in self.items.all())
+        )
+
+    @property
     def total_market_value(self):
         return round_money(sum(item.line_market_value for item in self.items.all()))
 
     @property
     def total_cash_offer_value(self):
-        return round_money(sum(item.cash_offer_price for item in self.items.all()))
+        return round_money(
+            self.total_adjusted_market_value * BuylistItem.CASH_OFFER_PERCENT
+        )
 
     @property
     def total_trade_offer_value(self):
-        return round_money(sum(item.trade_offer_price for item in self.items.all()))
+        return round_money(
+            self.total_adjusted_market_value * BuylistItem.TRADE_OFFER_PERCENT
+        )
 
     @property
     def total_recommended_offer_value(self):
-        return round_money(
-            sum(item.recommended_offer_price for item in self.items.all())
-        )
+        total_adjusted = self.total_adjusted_market_value
+        if total_adjusted == 0:
+            return round_money(0)
+        offer_percent = BuylistItem.get_offer_percent_for_buylist(self)
+        return round_money(total_adjusted * offer_percent)
 
     @property
     def total_final_offer_value(self):
@@ -164,6 +177,101 @@ class Buylist(models.Model):
         self.unlock_reason = ''
         self.unlocked_by = None
         self.unlocked_at = None
+
+    @staticmethod
+    def _allocate_proportionally(items, total_amount, value_getter):
+        """Split a buylist-level total across items by each line's share."""
+        if not items or total_amount == 0:
+            return {item.pk: round_money(0) for item in items}
+
+        total_base = sum(value_getter(item) for item in items)
+        if total_base == 0:
+            return {item.pk: round_money(0) for item in items}
+
+        allocations = {}
+        allocated = Decimal('0')
+        for index, item in enumerate(items):
+            if index == len(items) - 1:
+                allocations[item.pk] = round_money(total_amount - allocated)
+            else:
+                share = round_money(total_amount * value_getter(item) / total_base)
+                allocations[item.pk] = share
+                allocated += share
+        return allocations
+
+    def estimate_item_recommended_offer(self, item, *, replace_pk=None):
+        """
+        Estimate one item's recommended offer using buylist-level rates.
+
+        Pass replace_pk when simulating an edit to an existing item.
+        """
+        items = []
+        for existing in self.items.all():
+            if replace_pk and existing.pk == replace_pk:
+                continue
+            items.append(existing)
+        items.append(item)
+        items.sort(key=lambda row: row.pk or 0)
+
+        total_adjusted = round_money(
+            sum(row.adjusted_line_value for row in items)
+        )
+        if total_adjusted == 0:
+            return round_money(0)
+
+        offer_percent = BuylistItem.get_offer_percent_for_buylist(self)
+        total_recommended = round_money(total_adjusted * offer_percent)
+        return round_money(
+            total_recommended * item.adjusted_line_value / total_adjusted
+        )
+
+    def recalculate_offer_allocations(self, override_user=None, new_item_id=None):
+        """
+        Apply cash/trade/recommended rates to the buylist total, then split
+        each total proportionally across line items.
+        """
+        items = list(self.items.order_by('pk'))
+        total_adjusted = round_money(
+            sum(item.adjusted_line_value for item in items)
+        )
+
+        if not items or total_adjusted == 0:
+            totals = {
+                'cash': round_money(0),
+                'trade': round_money(0),
+                'recommended': round_money(0),
+            }
+        else:
+            totals = {
+                'cash': round_money(
+                    total_adjusted * BuylistItem.CASH_OFFER_PERCENT
+                ),
+                'trade': round_money(
+                    total_adjusted * BuylistItem.TRADE_OFFER_PERCENT
+                ),
+                'recommended': round_money(
+                    total_adjusted
+                    * BuylistItem.get_offer_percent_for_buylist(self)
+                ),
+            }
+
+        value_getter = lambda row: row.adjusted_line_value
+        cash_map = self._allocate_proportionally(items, totals['cash'], value_getter)
+        trade_map = self._allocate_proportionally(items, totals['trade'], value_getter)
+        recommended_map = self._allocate_proportionally(
+            items, totals['recommended'], value_getter,
+        )
+
+        for item in items:
+            item.cash_offer_price = cash_map[item.pk]
+            item.trade_offer_price = trade_map[item.pk]
+            item.recommended_offer_price = recommended_map[item.pk]
+            if item.pk == new_item_id:
+                item.final_offer_price = item.recommended_offer_price
+            else:
+                item.final_offer_price = round_money(item.final_offer_price)
+            item.apply_override_tracking(override_user)
+            item.save(skip_recalc=True, override_user=override_user)
 
 
 class BuylistItem(models.Model):
@@ -265,6 +373,13 @@ class BuylistItem(models.Model):
         return round_money(Decimal(self.quantity) * self.market_price)
 
     @property
+    def adjusted_line_value(self):
+        """Condition-adjusted value before the buylist offer rate is applied."""
+        return round_money(
+            Decimal(self.quantity) * self.market_price * self.condition_percent
+        )
+
+    @property
     def offer_percent(self):
         return self.get_offer_percent_for_buylist(self.buylist)
 
@@ -312,36 +427,53 @@ class BuylistItem(models.Model):
             self.override_at = None
 
     def _base_offer_value(self):
-        return (
-            Decimal(self.quantity)
-            * self.market_price
-            * self.condition_percent
-        )
+        return self.adjusted_line_value
 
     def calculate_cash_offer_price(self):
-        return round_money(self._base_offer_value() * self.CASH_OFFER_PERCENT)
+        return self._estimate_share_of_buylist_total(
+            self.buylist.total_adjusted_market_value * self.CASH_OFFER_PERCENT,
+        )
 
     def calculate_trade_offer_price(self):
-        return round_money(self._base_offer_value() * self.TRADE_OFFER_PERCENT)
+        return self._estimate_share_of_buylist_total(
+            self.buylist.total_adjusted_market_value * self.TRADE_OFFER_PERCENT,
+        )
+
+    def _estimate_share_of_buylist_total(self, buylist_total):
+        if not self.buylist_id:
+            return round_money(0)
+        total_adjusted = self.buylist.total_adjusted_market_value
+        if total_adjusted == 0:
+            return round_money(0)
+        return round_money(buylist_total * self.adjusted_line_value / total_adjusted)
 
     def calculate_recommended_offer_price(self):
-        offer_percent = self.get_offer_percent_for_buylist(self.buylist)
-        return round_money(self._base_offer_value() * offer_percent)
+        if not self.buylist_id:
+            return round_money(0)
+        return self.buylist.estimate_item_recommended_offer(
+            self,
+            replace_pk=self.pk,
+        )
 
-    def save(self, *args, override_user=None, **kwargs):
-        self.cash_offer_price = self.calculate_cash_offer_price()
-        self.trade_offer_price = self.calculate_trade_offer_price()
-        self.recommended_offer_price = self.calculate_recommended_offer_price()
+    def save(self, *args, override_user=None, skip_recalc=False, **kwargs):
+        if skip_recalc:
+            super().save(*args, **kwargs)
+            return
 
-        if self._state.adding:
-            self.final_offer_price = self.recommended_offer_price
+        is_new = self._state.adding
+        if is_new:
+            self.cash_offer_price = round_money(0)
+            self.trade_offer_price = round_money(0)
+            self.recommended_offer_price = round_money(0)
+            self.final_offer_price = round_money(0)
         else:
             self.final_offer_price = round_money(self.final_offer_price)
 
-        if not self._state.adding:
-            self.apply_override_tracking(override_user)
-
         super().save(*args, **kwargs)
+        self.buylist.recalculate_offer_allocations(
+            override_user=override_user,
+            new_item_id=self.pk if is_new else None,
+        )
 
 
 class PricingRule(models.Model):

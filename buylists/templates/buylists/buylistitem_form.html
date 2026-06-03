@@ -6,6 +6,27 @@
 <h1 class="h2 mb-1">{{ title }}</h1>
 <p class="text-muted mb-4">Buylist for {{ buylist.customer.name }}</p>
 
+{% if not item %}
+<p class="mb-3">
+    <a href="{% url 'buylists:buylist_card_search' buylist_pk=buylist.pk %}" class="btn btn-outline-primary btn-sm">
+        Search JustTCG for pricing
+    </a>
+</p>
+{% endif %}
+
+{% if from_card_search %}
+<div class="alert alert-success">Card details loaded from JustTCG. Review quantity and save below.</div>
+{% if justtcg_priced %}
+<p class="text-muted small">Market price is condition-specific from JustTCG; condition % is set to 100% so the offer rate is not applied twice.</p>
+{% endif %}
+{% endif %}
+
+{% if price_missing %}
+<div class="alert alert-warning">
+    No market price was returned for this card. Enter the market price manually before saving.
+</div>
+{% endif %}
+
 {% if item %}
 <div class="alert alert-light border mb-4">
     <strong>Recommended offer:</strong> ${{ item.recommended_offer_price }}

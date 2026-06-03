@@ -25,14 +25,14 @@
             · Updated {{ buylist.updated_at|date:"M j, Y g:i A" }}
         </p>
         <p class="text-muted small mb-0">
-            Recommended offers use payment choice rates. Final offers may be adjusted by staff with guardrails.
+            Cards are totaled first (market × condition), then the cash or trade rate is applied to the buylist total and split across lines. Final offers may be adjusted by staff with guardrails.
         </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a href="{% url 'buylists:buylist_offer_sheet' pk=buylist.pk %}" class="btn btn-outline-dark" target="_blank">Print Offer Sheet</a>
         <a href="{% url 'buylists:buylist_export_csv' pk=buylist.pk %}" class="btn btn-outline-secondary">Export CSV</a>
         {% if can_edit_items %}
-        <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-primary">Add Card</a>
+        <a href="{% url 'buylists:buylist_card_search' buylist_pk=buylist.pk %}" class="btn btn-primary">Add Card</a>
         {% endif %}
     </div>
 </div>
@@ -255,7 +255,7 @@
 <div class="alert alert-info">
     No cards on this buylist yet.
     {% if can_edit_items %}
-    <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}">Add the first card</a>.
+    <a href="{% url 'buylists:buylist_card_search' buylist_pk=buylist.pk %}">Add the first card</a>.
     {% else %}
     Cards cannot be added while this buylist is locked.
     {% endif %}

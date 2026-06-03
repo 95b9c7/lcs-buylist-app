@@ -40,6 +40,16 @@ urlpatterns = [
         name='buylist_unlock_items',
     ),
     path(
+        'buylists/<int:buylist_pk>/items/search/',
+        views.buylist_card_search,
+        name='buylist_card_search',
+    ),
+    path(
+        'buylists/<int:buylist_pk>/items/condition/',
+        views.buylist_card_condition,
+        name='buylist_card_condition',
+    ),
+    path(
         'buylists/<int:buylist_pk>/items/add/',
         views.buylistitem_create,
         name='buylistitem_create',

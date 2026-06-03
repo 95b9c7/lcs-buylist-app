@@ -1,0 +1,84 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Select Condition — {{ buylist.customer.name }}{% endblock %}
+
+{% block content %}
+<h1 class="h2 mb-1">Select Condition</h1>
+<p class="text-muted mb-4">
+    Buylist for {{ buylist.customer.name }} · JustTCG condition pricing
+</p>
+
+{% if card.name %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5 mb-3">{{ card.name }}</h2>
+        <dl class="row mb-0 small">
+            <dt class="col-sm-3">Game</dt>
+            <dd class="col-sm-9">{{ card.game|default:"—" }}</dd>
+            <dt class="col-sm-3">Set</dt>
+            <dd class="col-sm-9">{{ card.set|default:"—" }}</dd>
+            <dt class="col-sm-3">Number</dt>
+            <dd class="col-sm-9">{{ card.number|default:"—" }}</dd>
+            <dt class="col-sm-3">Rarity</dt>
+            <dd class="col-sm-9">{{ card.rarity|default:"—" }}</dd>
+            <dt class="col-sm-3">TCGplayer ID</dt>
+            <dd class="col-sm-9">{{ card.tcgplayerId|default:"—" }}</dd>
+        </dl>
+    </div>
+</div>
+{% endif %}
+
+{% if error_message %}
+<div class="alert alert-{% if error_type == 'missing_price' %}warning{% else %}danger{% endif %}">
+    {{ error_message }}
+</div>
+{% endif %}
+
+{% if card.id %}
+<form method="post" class="card">
+    <div class="card-body">
+        {% csrf_token %}
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <input type="hidden" name="card_name" value="{{ card.name }}">
+        <input type="hidden" name="game" value="{{ card.game }}">
+        <input type="hidden" name="set_name" value="{{ card.set }}">
+        <input type="hidden" name="number" value="{{ card.number }}">
+        <input type="hidden" name="rarity" value="{{ card.rarity }}">
+        <input type="hidden" name="tcgplayer_id" value="{{ card.tcgplayerId }}">
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label for="condition" class="form-label">Condition</label>
+                <select class="form-select" id="condition" name="condition" required>
+                    {% for value, label in condition_choices %}
+                    <option value="{{ value }}" {% if selected_condition == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">JustTCG returns condition-specific market prices.</div>
+            </div>
+            <div class="col-md-4">
+                <label for="printing" class="form-label">Printing (optional)</label>
+                <select class="form-select" id="printing" name="printing">
+                    <option value="">Any (prefer Normal)</option>
+                    {% for printing in printing_choices %}
+                    <option value="{{ printing }}" {% if selected_printing == printing %}selected{% endif %}>
+                        {{ printing }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">Get Price &amp; Add Card</button>
+            </div>
+        </div>
+    </div>
+</form>
+{% endif %}
+
+<p class="mt-4">
+    <a href="{% url 'buylists:buylist_card_search' buylist_pk=buylist.pk %}" class="btn btn-outline-secondary">← Back to search</a>
+    <a href="{% url 'buylists:buylistitem_create' buylist_pk=buylist.pk %}" class="btn btn-link">Enter card manually</a>
+</p>
+{% endblock %}
