@@ -1,0 +1,271 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Buylist Reports — LCS Buylist{% endblock %}
+
+{% block extra_head %}
+<style>
+@media print {
+    .no-print,
+    nav,
+    button,
+    .btn {
+        display: none !important;
+    }
+
+    body {
+        font-size: 12px;
+    }
+
+    main.container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+    }
+
+    .card {
+        border: 1px solid #ddd !important;
+        break-inside: avoid;
+        box-shadow: none !important;
+    }
+
+    .table {
+        font-size: 11px;
+    }
+
+    a {
+        color: #000 !important;
+        text-decoration: none !important;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2 mb-1">Buylist Reports</h1>
+        <p class="text-muted mb-0">Review buylist totals and employee activity.</p>
+    </div>
+    <button type="button" class="btn btn-outline-dark no-print" onclick="window.print()">Print Report</button>
+</div>
+
+<form method="get" class="card mb-4 no-print">
+    <div class="card-header fw-semibold">Filters</div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="period" class="form-label">Date range</label>
+                <select class="form-select" id="period" name="period">
+                    {% for value, label in period_choices %}
+                    <option value="{{ value }}" {% if selected_period == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="start_date" class="form-label">Custom start date</label>
+                <input type="date" class="form-control" id="start_date" name="start_date" value="{{ start_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="end_date" class="form-label">Custom end date</label>
+                <input type="date" class="form-control" id="end_date" name="end_date" value="{{ end_date|date:'Y-m-d' }}">
+            </div>
+            <div class="col-md-3">
+                <label for="status" class="form-label">Status</label>
+                <select class="form-select" id="status" name="status">
+                    <option value="">All</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if can_view_all_employees %}
+            <div class="col-md-4">
+                <label for="employee" class="form-label">Employee</label>
+                <select class="form-select" id="employee" name="employee">
+                    <option value="">All employees</option>
+                    {% for employee in employee_options %}
+                    <option value="{{ employee.pk }}" {% if selected_employee_id == employee.pk|stringformat:'s' %}selected{% endif %}>
+                        {{ employee.get_username }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <div class="col-md-8 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Run Report</button>
+                <a href="{% url 'buylists:buylist_report' %}" class="btn btn-outline-secondary">Reset</a>
+            </div>
+        </div>
+    </div>
+</form>
+
+<section class="card mb-4">
+    <div class="card-header fw-semibold">Report Details</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="text-muted small">Report date range</div>
+                <div class="fw-semibold">{{ range_label }}</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small">Status filter</div>
+                <div class="fw-semibold">{{ status_filter_label }}</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small">Employee filter</div>
+                <div class="fw-semibold">{{ employee_filter_label }}</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="mb-4">
+    <h2 class="h5 mb-3">Summary</h2>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total buylists</div>
+                    <div class="fs-4 fw-semibold">{{ summary.total_buylists }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total market value</div>
+                    <div class="fs-4 fw-semibold">${{ summary.total_market_value|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total offer value</div>
+                    <div class="fs-4 fw-semibold">${{ summary.total_offer_value|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total paid amount</div>
+                    <div class="fs-4 fw-semibold">${{ summary.total_paid_amount|floatformat:2 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Accepted count</div>
+                    <div class="fs-4 fw-semibold">{{ summary.accepted_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Rejected count</div>
+                    <div class="fs-4 fw-semibold">{{ summary.rejected_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Paid count</div>
+                    <div class="fs-4 fw-semibold">{{ summary.paid_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="mb-4">
+    <h2 class="h5 mb-3">Employee Breakdown</h2>
+    {% if employee_breakdown %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle table-sm">
+            <thead class="table-dark">
+                <tr>
+                    <th>Employee</th>
+                    <th class="text-end">Buylists created</th>
+                    <th class="text-end">Buylists completed</th>
+                    <th class="text-end">Total offer value</th>
+                    <th class="text-end">Total paid amount</th>
+                    <th class="text-end">Accepted</th>
+                    <th class="text-end">Rejected</th>
+                    <th class="text-end">Paid</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in employee_breakdown %}
+                <tr>
+                    <td>{{ row.employee.get_username }}</td>
+                    <td class="text-end">{{ row.created_count }}</td>
+                    <td class="text-end">{{ row.completed_count }}</td>
+                    <td class="text-end">${{ row.total_offer_value|floatformat:2 }}</td>
+                    <td class="text-end">${{ row.total_paid_amount|floatformat:2 }}</td>
+                    <td class="text-end">{{ row.accepted_count }}</td>
+                    <td class="text-end">{{ row.rejected_count }}</td>
+                    <td class="text-end">{{ row.paid_count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">No employee activity for the selected filters.</div>
+    {% endif %}
+</section>
+
+<section>
+    <h2 class="h5 mb-3">Buylists</h2>
+    {% if buylists %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle table-sm">
+            <thead class="table-dark">
+                <tr>
+                    <th>Buylist ID</th>
+                    <th>Customer name</th>
+                    <th>Status</th>
+                    <th>Created by</th>
+                    <th>Completed by</th>
+                    <th>Created date</th>
+                    <th>Completed date</th>
+                    <th class="text-end">Total market value</th>
+                    <th class="text-end">Total offer value</th>
+                    <th class="text-end">Paid amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for buylist in buylists %}
+                <tr>
+                    <td>
+                        <a href="{% url 'buylists:buylist_detail' pk=buylist.pk %}">#{{ buylist.pk }}</a>
+                    </td>
+                    <td>{{ buylist.customer.name }}</td>
+                    <td><span class="badge bg-secondary">{{ buylist.get_status_display }}</span></td>
+                    <td>{{ buylist.created_by.username|default:"—" }}</td>
+                    <td>{{ buylist.completed_by.username|default:"—" }}</td>
+                    <td class="text-nowrap">{{ buylist.created_at|date:"M j, Y g:i A" }}</td>
+                    <td class="text-nowrap">{{ buylist.completed_at|date:"M j, Y g:i A"|default:"—" }}</td>
+                    <td class="text-end">${{ buylist.total_market_value|floatformat:2 }}</td>
+                    <td class="text-end">${{ buylist.total_offer_value|floatformat:2 }}</td>
+                    <td class="text-end">
+                        {% if buylist.amount_paid is not None %}
+                        ${{ buylist.amount_paid|floatformat:2 }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">No buylists match the selected filters.</div>
+    {% endif %}
+</section>
+{% endblock %}

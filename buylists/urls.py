@@ -66,6 +66,7 @@ urlpatterns = [
     ),
     path('reports/overrides/', views.override_report, name='override_report'),
     path('reports/paid/', views.paid_report, name='paid_report'),
+    path('reports/buylists/', views.buylist_report, name='buylist_report'),
     path('pricing-rules/', views.pricing_rule_list, name='pricing_rule_list'),
     path('pricing-rules/new/', views.pricing_rule_create, name='pricing_rule_create'),
     path(

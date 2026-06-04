@@ -114,6 +114,18 @@ class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
                 'status', flat=True
             ).first()
 
+        status_changed = previous_status != instance.status
+        if instance.status in Buylist.TERMINAL_STATUSES:
+            if status_changed:
+                if self.paid_by_user and self.paid_by_user.is_authenticated:
+                    instance.completed_by = self.paid_by_user
+                instance.completed_at = timezone.now()
+            elif not instance.completed_at:
+                instance.completed_at = timezone.now()
+        else:
+            instance.completed_by = None
+            instance.completed_at = None
+
         if instance.status == Buylist.STATUS_PAID:
             if self.paid_by_user and self.paid_by_user.is_authenticated:
                 instance.paid_by = self.paid_by_user

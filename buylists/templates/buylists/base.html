@@ -26,6 +26,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'buylists:customer_list' %}">Customers</a>
                     </li>
+                    {% if nav_can_view_reports %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'buylists:buylist_report' %}">Reports</a>
+                    </li>
+                    {% endif %}
                     {% if nav_can_view_override_report %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'buylists:override_report' %}">Overrides</a>

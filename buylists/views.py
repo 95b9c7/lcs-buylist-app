@@ -1,10 +1,11 @@
 import csv
 import re
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db.models import Count, DecimalField, F, Q, Sum, Value
 from django.db.models.expressions import ExpressionWrapper
@@ -254,7 +255,13 @@ def buylist_create(request):
     if request.method == 'POST':
         form = BuylistForm(request.POST, user=request.user)
         if form.is_valid():
-            buylist = form.save()
+            buylist = form.save(commit=False)
+            if request.user.is_authenticated:
+                buylist.created_by = request.user
+                if buylist.status in Buylist.TERMINAL_STATUSES:
+                    buylist.completed_by = request.user
+                    buylist.completed_at = timezone.now()
+            buylist.save()
             messages.success(request, 'Buylist created.')
             return redirect('buylists:buylist_detail', pk=buylist.pk)
     else:
@@ -272,7 +279,7 @@ def buylist_create(request):
 def buylist_detail(request, pk):
     buylist = get_object_or_404(
         Buylist.objects.select_related(
-            'customer', 'paid_by', 'unlocked_by',
+            'customer', 'created_by', 'completed_by', 'paid_by', 'unlocked_by',
         ).prefetch_related(
             'items__override_by',
             'activities__user',
@@ -751,6 +758,227 @@ def buylistitem_delete(request, buylist_pk, pk):
     return render(request, 'buylists/buylistitem_confirm_delete.html', {
         'buylist': buylist,
         'item': item,
+    })
+
+
+REPORT_PERIOD_TODAY = 'today'
+REPORT_PERIOD_WEEK = 'week'
+REPORT_PERIOD_MONTH = 'month'
+REPORT_PERIOD_CUSTOM = 'custom'
+
+REPORT_PERIOD_CHOICES = [
+    (REPORT_PERIOD_TODAY, 'Today'),
+    (REPORT_PERIOD_WEEK, 'This Week'),
+    (REPORT_PERIOD_MONTH, 'This Month'),
+    (REPORT_PERIOD_CUSTOM, 'Custom'),
+]
+
+
+def _parse_report_date(value, default):
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _format_report_date(value):
+    return f'{value:%b} {value.day}, {value:%Y}'
+
+
+def _report_date_range(request):
+    today = timezone.localdate()
+    period = request.GET.get('period', REPORT_PERIOD_TODAY).strip()
+    if period not in {choice[0] for choice in REPORT_PERIOD_CHOICES}:
+        period = REPORT_PERIOD_TODAY
+
+    if period == REPORT_PERIOD_WEEK:
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif period == REPORT_PERIOD_MONTH:
+        start_date = today.replace(day=1)
+        end_date = today
+    elif period == REPORT_PERIOD_CUSTOM:
+        start_date = _parse_report_date(request.GET.get('start_date'), today)
+        end_date = _parse_report_date(request.GET.get('end_date'), start_date)
+        if end_date < start_date:
+            end_date = start_date
+    else:
+        start_date = today
+        end_date = today
+
+    start_at = timezone.make_aware(datetime.combine(start_date, time.min))
+    end_at = timezone.make_aware(
+        datetime.combine(end_date + timedelta(days=1), time.min),
+    )
+    if start_date == end_date:
+        range_label = _format_report_date(start_date)
+    else:
+        range_label = (
+            f'{_format_report_date(start_date)} - '
+            f'{_format_report_date(end_date)}'
+        )
+
+    return {
+        'period': period,
+        'start_date': start_date,
+        'end_date': end_date,
+        'start_at': start_at,
+        'end_at': end_at,
+        'range_label': range_label,
+    }
+
+
+def _report_money_total(values):
+    return round_money(sum(values, Decimal('0.00')))
+
+
+def _buylist_report_summary(buylists):
+    return {
+        'total_buylists': len(buylists),
+        'total_market_value': _report_money_total(
+            buylist.total_market_value for buylist in buylists
+        ),
+        'total_offer_value': _report_money_total(
+            buylist.total_offer_value for buylist in buylists
+        ),
+        'total_paid_amount': _report_money_total(
+            buylist.amount_paid or Decimal('0.00') for buylist in buylists
+        ),
+        'accepted_count': sum(
+            1 for buylist in buylists if buylist.status == Buylist.STATUS_ACCEPTED
+        ),
+        'rejected_count': sum(
+            1 for buylist in buylists if buylist.status == Buylist.STATUS_REJECTED
+        ),
+        'paid_count': sum(
+            1 for buylist in buylists if buylist.status == Buylist.STATUS_PAID
+        ),
+    }
+
+
+def _employee_options():
+    User = get_user_model()
+    return User.objects.filter(is_active=True).order_by('username')
+
+
+def _employee_breakdown(buylists, employee_options):
+    rows = []
+    for employee in employee_options:
+        created = [
+            buylist for buylist in buylists
+            if buylist.created_by_id == employee.pk
+        ]
+        completed = [
+            buylist for buylist in buylists
+            if buylist.completed_by_id == employee.pk
+        ]
+        if not created and not completed:
+            continue
+
+        rows.append({
+            'employee': employee,
+            'created_count': len(created),
+            'completed_count': len(completed),
+            'total_offer_value': _report_money_total(
+                buylist.total_offer_value for buylist in completed
+            ),
+            'total_paid_amount': _report_money_total(
+                buylist.amount_paid or Decimal('0.00') for buylist in completed
+            ),
+            'accepted_count': sum(
+                1 for buylist in completed
+                if buylist.status == Buylist.STATUS_ACCEPTED
+            ),
+            'rejected_count': sum(
+                1 for buylist in completed
+                if buylist.status == Buylist.STATUS_REJECTED
+            ),
+            'paid_count': sum(
+                1 for buylist in completed
+                if buylist.status == Buylist.STATUS_PAID
+            ),
+        })
+    return rows
+
+
+@employee_required
+def buylist_report(request):
+    date_range = _report_date_range(request)
+    can_view_all_employees = user_is_manager_or_owner(request.user)
+    if can_view_all_employees:
+        employee_options = list(_employee_options())
+    else:
+        employee_options = [request.user]
+    selected_employee_id = request.GET.get('employee', '').strip()
+    selected_employee = None
+
+    if can_view_all_employees and selected_employee_id:
+        try:
+            selected_employee = get_user_model().objects.get(
+                pk=int(selected_employee_id),
+                is_active=True,
+            )
+        except (ValueError, get_user_model().DoesNotExist):
+            selected_employee_id = ''
+            selected_employee = None
+    elif not can_view_all_employees:
+        selected_employee = request.user
+        selected_employee_id = str(request.user.pk)
+
+    status_filter = request.GET.get('status', '').strip()
+    valid_statuses = {status for status, _label in Buylist.STATUS_CHOICES}
+    if status_filter not in valid_statuses:
+        status_filter = ''
+
+    buylists = (
+        Buylist.objects.select_related(
+            'customer', 'created_by', 'completed_by', 'paid_by',
+        )
+        .prefetch_related('items')
+        .filter(
+            Q(created_at__gte=date_range['start_at'], created_at__lt=date_range['end_at'])
+            | Q(
+                completed_at__gte=date_range['start_at'],
+                completed_at__lt=date_range['end_at'],
+            )
+        )
+        .order_by('-created_at', '-pk')
+    )
+
+    if status_filter:
+        buylists = buylists.filter(status=status_filter)
+
+    if selected_employee:
+        buylists = buylists.filter(
+            Q(created_by=selected_employee) | Q(completed_by=selected_employee),
+        )
+
+    buylists = list(buylists)
+    summary = _buylist_report_summary(buylists)
+    employee_breakdown = _employee_breakdown(buylists, employee_options)
+    status_labels = dict(Buylist.STATUS_CHOICES)
+
+    if selected_employee:
+        employee_filter_label = selected_employee.get_username()
+    else:
+        employee_filter_label = 'All employees'
+
+    return render(request, 'buylists/buylist_report.html', {
+        'buylists': buylists,
+        'summary': summary,
+        'employee_breakdown': employee_breakdown,
+        'period_choices': REPORT_PERIOD_CHOICES,
+        'selected_period': date_range['period'],
+        'start_date': date_range['start_date'],
+        'end_date': date_range['end_date'],
+        'range_label': date_range['range_label'],
+        'status_choices': Buylist.STATUS_CHOICES,
+        'status_filter': status_filter,
+        'status_filter_label': status_labels.get(status_filter, 'All'),
+        'employee_options': employee_options,
+        'selected_employee_id': selected_employee_id,
+        'employee_filter_label': employee_filter_label,
+        'can_view_all_employees': can_view_all_employees,
     })
 
 
