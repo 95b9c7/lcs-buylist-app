@@ -781,6 +781,10 @@ def _parse_report_date(value, default):
         return default
 
 
+def _format_report_date(value):
+    return f'{value:%b} {value.day}, {value:%Y}'
+
+
 def _report_date_range(request):
     today = timezone.localdate()
     period = request.GET.get('period', REPORT_PERIOD_TODAY).strip()
@@ -807,11 +811,11 @@ def _report_date_range(request):
         datetime.combine(end_date + timedelta(days=1), time.min),
     )
     if start_date == end_date:
-        range_label = start_date.strftime('%b %-d, %Y')
+        range_label = _format_report_date(start_date)
     else:
         range_label = (
-            f'{start_date.strftime("%b %-d, %Y")} - '
-            f'{end_date.strftime("%b %-d, %Y")}'
+            f'{_format_report_date(start_date)} - '
+            f'{_format_report_date(end_date)}'
         )
 
     return {

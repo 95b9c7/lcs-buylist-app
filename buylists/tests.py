@@ -164,6 +164,19 @@ class BuylistReportTests(TestCase):
         self.assertContains(response, 'Alice Own')
         self.assertNotContains(response, 'Bob Own')
 
+    def test_report_date_label_uses_cross_platform_formatting(self):
+        self.client.force_login(self.manager)
+
+        response = self.client.get(reverse('buylists:buylist_report'), {
+            'period': 'custom',
+            'start_date': '2026-06-03',
+            'end_date': '2026-06-03',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['range_label'], 'Jun 3, 2026')
+        self.assertContains(response, 'Jun 3, 2026')
+
     def test_authenticated_navbar_includes_reports_link(self):
         self.client.force_login(self.alice)
 
