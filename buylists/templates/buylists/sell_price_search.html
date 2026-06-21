@@ -1,0 +1,117 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Sell Pricing — LCS Buylist{% endblock %}
+
+{% block content %}
+<h1 class="h2 mb-1">Sell Pricing</h1>
+<p class="text-muted mb-4">
+    Look up TCGplayer market prices and calculate in-store sell prices by condition.
+</p>
+
+<form method="get" class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label for="q" class="form-label">Product name</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="q"
+                    name="q"
+                    value="{{ query }}"
+                    placeholder="e.g. Charizard or Evolving Skies Booster Box"
+                    autofocus
+                >
+            </div>
+            <div class="col-md-3">
+                <label for="game" class="form-label">Game</label>
+                <select class="form-select" id="game" name="game">
+                    <option value="pokemon" {% if game == "pokemon" %}selected{% endif %}>Pokémon</option>
+                    <option value="magic" {% if game == "magic" %}selected{% endif %}>Magic</option>
+                    <option value="yugioh" {% if game == "yugioh" %}selected{% endif %}>Yu-Gi-Oh!</option>
+                    <option value="lorcana" {% if game == "lorcana" %}selected{% endif %}>Lorcana</option>
+                    <option value="onepiece" {% if game == "onepiece" %}selected{% endif %}>One Piece</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="product_type" class="form-label">Type</label>
+                <select class="form-select" id="product_type" name="product_type">
+                    {% for value, label in product_type_choices %}
+                    <option value="{{ value }}" {% if product_type == value %}selected{% endif %}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Search</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% if error_message %}
+<div class="alert alert-{% if error_type == 'no_results' %}info{% elif error_type == 'missing_price' %}warning{% else %}danger{% endif %}">
+    {{ error_message }}
+</div>
+{% endif %}
+
+{% if results %}
+<div class="card">
+    <div class="card-header">Results ({{ results|length }})</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Game</th>
+                        <th>Set</th>
+                        <th>#</th>
+                        <th>Rarity</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for card in results %}
+                    <tr>
+                        <td>{{ card.name }}</td>
+                        <td>
+                            {% if card.is_sealed %}
+                            <span class="badge bg-info text-dark">Sealed</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Single</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ card.game|default:"—" }}</td>
+                        <td>{{ card.set|default:"—" }}</td>
+                        <td>{{ card.number|default:"—" }}</td>
+                        <td>{{ card.rarity|default:"—" }}</td>
+                        <td class="text-end text-nowrap">
+                            <a
+                                href="{% url 'buylists:sell_price_detail' %}?card_id={{ card.id|urlencode }}&card_name={{ card.name|urlencode }}&game={{ card.game|urlencode }}&set_name={{ card.set|urlencode }}&number={{ card.number|urlencode }}&rarity={{ card.rarity|urlencode }}&tcgplayer_id={{ card.tcgplayerId|urlencode }}{% if card.is_sealed %}&is_sealed=1{% endif %}"
+                                class="btn btn-sm btn-primary"
+                            >
+                                Price card
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% elif query and not error_message %}
+<div class="alert alert-info">Enter a product name and click Search.</div>
+{% endif %}
+
+<div class="card mt-4">
+    <div class="card-body small text-muted mb-0">
+        <strong>Singles formula</strong> (based on Near Mint TCGplayer market price):
+        NM = market × 110% · LP = (market × 80%) × 110% · MP = (market × 65%) × 110% ·
+        HP = (market × 30%) × 110% · DMG = (market × 15%) × 110%
+    </div>
+</div>
+{% endblock %}

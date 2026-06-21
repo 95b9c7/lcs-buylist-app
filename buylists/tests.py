@@ -6,7 +6,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .forms import BuylistMarkPaidForm
 from .models import Buylist, BuylistItem, Customer
+from .sell_pricing import calculate_sell_prices
 
 
 class BuylistReportTests(TestCase):
@@ -76,11 +78,14 @@ class BuylistReportTests(TestCase):
 
         response = self.client.post(
             reverse('buylists:buylist_update_status', kwargs={'pk': buylist.pk}),
-            {
-                'status': Buylist.STATUS_ACCEPTED,
-                'payment_method': '',
-                'amount_paid': '',
-            },
+            {'new_status': Buylist.STATUS_WAITING},
+        )
+        buylist.refresh_from_db()
+        self.assertEqual(buylist.status, Buylist.STATUS_WAITING)
+
+        response = self.client.post(
+            reverse('buylists:buylist_update_status', kwargs={'pk': buylist.pk}),
+            {'new_status': Buylist.STATUS_ACCEPTED},
         )
 
         buylist.refresh_from_db()
@@ -88,6 +93,21 @@ class BuylistReportTests(TestCase):
         self.assertEqual(buylist.status, Buylist.STATUS_ACCEPTED)
         self.assertEqual(buylist.completed_by, self.manager)
         self.assertIsNotNone(buylist.completed_at)
+
+    def test_mark_paid_form_prefills_total_final_offer(self):
+        buylist = self._create_buylist(
+            'Prefill Test',
+            status=Buylist.STATUS_ACCEPTED,
+        )
+        buylist.payment_choice = Buylist.PAYMENT_CASH
+        buylist.save()
+        buylist.recalculate_offer_allocations(reset_final_offers=True)
+
+        form = BuylistMarkPaidForm(instance=buylist)
+        self.assertEqual(
+            form['amount_paid'].value(),
+            buylist.total_final_offer_value,
+        )
 
     def test_manager_report_filters_by_status_and_employee(self):
         paid_buylist = self._create_buylist(
@@ -184,4 +204,36 @@ class BuylistReportTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse('buylists:buylist_report'))
+
+
+class SellPricingTests(TestCase):
+    def setUp(self):
+        Group.objects.create(name='Employee')
+        User = get_user_model()
+        self.employee = User.objects.create_user(
+            username='employee',
+            password='password',
+        )
+        self.employee.groups.add(Group.objects.get(name='Employee'))
+
+    def test_sell_price_formulas(self):
+        rows = calculate_sell_prices(Decimal('10.00'))
+        by_condition = {row['condition']: row['sell_price'] for row in rows}
+
+        self.assertEqual(by_condition[BuylistItem.CONDITION_NM], Decimal('11.00'))
+        self.assertEqual(by_condition[BuylistItem.CONDITION_LP], Decimal('8.80'))
+        self.assertEqual(by_condition[BuylistItem.CONDITION_MP], Decimal('7.15'))
+        self.assertEqual(by_condition[BuylistItem.CONDITION_HP], Decimal('3.30'))
+        self.assertEqual(by_condition[BuylistItem.CONDITION_DMG], Decimal('1.65'))
+
+    def test_sell_price_search_requires_login(self):
+        response = self.client.get(reverse('buylists:sell_price_search'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_sell_price_search_available_to_employees(self):
+        self.client.force_login(self.employee)
+        response = self.client.get(reverse('buylists:sell_price_search'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sell Pricing')
+        self.assertContains(response, reverse('buylists:sell_price_search'))
         self.assertContains(response, 'Reports')

@@ -59,6 +59,8 @@ class PricingRuleForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
+    """Legacy combined form; prefer status buttons + BuylistMarkPaidForm."""
+
     class Meta:
         model = Buylist
         fields = ['status', 'payment_method', 'amount_paid']
@@ -143,6 +145,85 @@ class BuylistStatusForm(BootstrapFormMixin, forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+
+class BuylistMarkPaidForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = Buylist
+        fields = ['payment_method', 'amount_paid']
+        labels = {
+            'payment_method': 'Payment method',
+            'amount_paid': 'Amount paid',
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.paid_by_user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        self.fields['payment_method'].required = True
+        self.fields['amount_paid'].required = True
+        self.fields['amount_paid'].widget.attrs.update({
+            'step': '0.01',
+            'min': '0',
+            'class': 'form-control',
+        })
+        if not self.is_bound and self.instance.amount_paid is None:
+            self.initial['amount_paid'] = self.instance.total_final_offer_value
+        self.fields['amount_paid'].help_text = (
+            'Pre-filled from the total final offer; adjust if the payout differs.'
+        )
+
+    def clean_amount_paid(self):
+        amount_paid = self.cleaned_data.get('amount_paid')
+        if amount_paid is None:
+            return amount_paid
+        return round_money(amount_paid)
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        previous_status = instance.status
+        instance.status = Buylist.STATUS_PAID
+
+        if self.paid_by_user and self.paid_by_user.is_authenticated:
+            instance.paid_by = self.paid_by_user
+            instance.completed_by = self.paid_by_user
+        if previous_status != Buylist.STATUS_PAID or not instance.paid_at:
+            instance.paid_at = timezone.now()
+        if not instance.completed_at:
+            instance.completed_at = timezone.now()
+
+        if commit:
+            instance.save()
+        return instance
+
+
+def apply_buylist_status_change(buylist, new_status, *, user=None):
+    """
+    Update buylist status from a workflow button (not marking Paid).
+    Returns the buylist after save.
+    """
+    previous_status = buylist.status
+    buylist.status = new_status
+
+    if new_status in Buylist.TERMINAL_STATUSES:
+        if previous_status != new_status or not buylist.completed_at:
+            if user and user.is_authenticated:
+                buylist.completed_by = user
+            buylist.completed_at = timezone.now()
+    else:
+        buylist.completed_by = None
+        buylist.completed_at = None
+
+    if new_status != Buylist.STATUS_PAID:
+        buylist.payment_method = ''
+        buylist.amount_paid = None
+        buylist.paid_at = None
+        buylist.paid_by = None
+
+    if new_status != Buylist.STATUS_ACCEPTED:
+        buylist.clear_item_unlock()
+
+    buylist.save()
+    return buylist
 
 
 class BuylistUnlockForm(BootstrapFormMixin, forms.Form):

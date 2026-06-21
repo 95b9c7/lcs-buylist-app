@@ -15,14 +15,22 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from .buylist_workflow import (
+    get_status_actions,
+    is_allowed_status_change,
+    show_mark_paid_form,
+    show_payment_choice_settings,
+    show_payment_recorded,
+)
 from .forms import (
     BuylistForm,
     BuylistItemForm,
+    BuylistMarkPaidForm,
     BuylistPaymentChoiceForm,
-    BuylistStatusForm,
     BuylistUnlockForm,
     CustomerForm,
     PricingRuleForm,
+    apply_buylist_status_change,
 )
 from .activity import log_buylist_activity
 from .models import Buylist, BuylistActivity, BuylistItem, Customer, PricingRule, round_money
@@ -39,6 +47,7 @@ from .buylist_locking import (
     lock_status_message,
     show_locked_badge,
 )
+from .sell_pricing import calculate_sealed_sell_price, calculate_sell_prices
 from .permissions import (
     employee_required,
     manager_or_owner_required,
@@ -289,19 +298,24 @@ def buylist_detail(request, pk):
     activities = buylist.activities.all()
     can_manage_settings = user_is_manager_or_owner(request.user)
     can_edit_items = can_edit_buylist_items(buylist, request.user)
-    status_form = (
-        BuylistStatusForm(instance=buylist, user=request.user)
-        if can_manage_settings else None
+    mark_paid_form = (
+        BuylistMarkPaidForm(instance=buylist, user=request.user)
+        if can_manage_settings and show_mark_paid_form(buylist) else None
     )
-    payment_form = BuylistPaymentChoiceForm(instance=buylist) if can_manage_settings else None
+    payment_form = (
+        BuylistPaymentChoiceForm(instance=buylist)
+        if can_manage_settings and show_payment_choice_settings(buylist) else None
+    )
     unlock_form = (
         BuylistUnlockForm()
         if can_unlock_buylist(buylist, request.user) else None
     )
     return render(request, 'buylists/buylist_detail.html', {
         'buylist': buylist,
-        'status_form': status_form,
+        'status_actions': get_status_actions(buylist) if can_manage_settings else [],
+        'mark_paid_form': mark_paid_form,
         'payment_form': payment_form,
+        'show_payment_recorded': show_payment_recorded(buylist),
         'unlock_form': unlock_form,
         'can_manage_settings': can_manage_settings,
         'can_edit_items': can_edit_items,
@@ -407,8 +421,40 @@ def buylist_offer_sheet(request, pk):
 @require_POST
 def buylist_update_status(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
+    new_status = request.POST.get('new_status', '').strip()
     old_status = buylist.status
-    form = BuylistStatusForm(request.POST, instance=buylist, user=request.user)
+
+    if not new_status or not is_allowed_status_change(old_status, new_status):
+        messages.error(request, 'That status change is not allowed from the current phase.')
+        return redirect('buylists:buylist_detail', pk=pk)
+
+    buylist = apply_buylist_status_change(buylist, new_status, user=request.user)
+    if new_status == Buylist.STATUS_ACCEPTED:
+        buylist.recalculate_offer_allocations(
+            override_user=request.user,
+            reset_final_offers=bool(buylist.payment_choice),
+        )
+    old_label = dict(Buylist.STATUS_CHOICES).get(old_status, old_status)
+    log_buylist_activity(
+        buylist,
+        request.user,
+        BuylistActivity.ACTION_STATUS_CHANGED,
+        f'Status changed from {old_label} to {buylist.get_status_display()}.',
+    )
+    messages.success(request, f'Buylist moved to {buylist.get_status_display()}.')
+    return redirect('buylists:buylist_detail', pk=pk)
+
+
+@manager_or_owner_required
+@require_POST
+def buylist_mark_paid(request, pk):
+    buylist = get_object_or_404(Buylist, pk=pk)
+    if not show_mark_paid_form(buylist):
+        messages.error(request, 'Payment can only be recorded for Accepted buylists.')
+        return redirect('buylists:buylist_detail', pk=pk)
+
+    old_status = buylist.status
+    form = BuylistMarkPaidForm(request.POST, instance=buylist, user=request.user)
     if form.is_valid():
         buylist = form.save()
         if old_status != buylist.status:
@@ -419,26 +465,22 @@ def buylist_update_status(request, pk):
                 BuylistActivity.ACTION_STATUS_CHANGED,
                 f'Status changed from {old_label} to {buylist.get_status_display()}.',
             )
-        if buylist.is_paid:
-            log_buylist_activity(
-                buylist,
-                request.user,
-                BuylistActivity.ACTION_PAYMENT_RECORDED,
-                (
-                    f'Payment recorded: ${buylist.amount_paid} via '
-                    f'{buylist.get_payment_method_display()}.'
-                ),
-            )
-        if buylist.is_paid:
-            messages.success(
-                request,
-                f'Buylist marked Paid — ${buylist.amount_paid} via '
-                f'{buylist.get_payment_method_display()}.',
-            )
-        else:
-            messages.success(request, f'Status updated to {buylist.get_status_display()}.')
+        log_buylist_activity(
+            buylist,
+            request.user,
+            BuylistActivity.ACTION_PAYMENT_RECORDED,
+            (
+                f'Payment recorded: ${buylist.amount_paid} via '
+                f'{buylist.get_payment_method_display()}.'
+            ),
+        )
+        messages.success(
+            request,
+            f'Buylist marked Paid — ${buylist.amount_paid} via '
+            f'{buylist.get_payment_method_display()}.',
+        )
     else:
-        messages.error(request, 'Could not update status. Check payment fields if marking Paid.')
+        messages.error(request, 'Could not mark as Paid. Enter payment method and amount.')
     return redirect('buylists:buylist_detail', pk=pk)
 
 
@@ -465,6 +507,13 @@ def buylist_unlock_items(request, pk):
 @require_POST
 def buylist_update_payment_choice(request, pk):
     buylist = get_object_or_404(Buylist, pk=pk)
+    if not show_payment_choice_settings(buylist):
+        messages.error(
+            request,
+            'Payment choice is available after the buylist is Accepted.',
+        )
+        return redirect('buylists:buylist_detail', pk=pk)
+
     old_payment_choice = buylist.payment_choice
     form = BuylistPaymentChoiceForm(request.POST, instance=buylist)
     if form.is_valid():
@@ -472,25 +521,16 @@ def buylist_update_payment_choice(request, pk):
         payment_changed = old_payment_choice != buylist.payment_choice
         buylist.recalculate_offer_allocations(
             override_user=request.user,
-            reset_final_offers=payment_changed,
+            reset_final_offers=payment_changed and bool(buylist.payment_choice),
         )
-        if buylist.payment_choice:
+        if payment_changed and buylist.payment_choice:
             label = buylist.get_payment_choice_display()
-            if payment_changed:
-                messages.success(
-                    request,
-                    f'Payment choice set to {label}. Final offers updated to match.',
-                )
-            else:
-                messages.success(request, f'Payment choice set to {label}.')
-        else:
-            if payment_changed:
-                messages.success(
-                    request,
-                    'Payment choice cleared. Final offers updated to match.',
-                )
-            else:
-                messages.success(request, 'Payment choice cleared.')
+            messages.success(
+                request,
+                f'Payment choice set to {label}. Offer totals updated.',
+            )
+        elif payment_changed and not buylist.payment_choice:
+            messages.success(request, 'Payment choice cleared.')
     else:
         messages.error(request, 'Could not update payment choice.')
     return redirect('buylists:buylist_detail', pk=pk)
@@ -1054,4 +1094,126 @@ def pricing_rule_edit(request, pk):
         'form': form,
         'title': 'Edit Pricing Rule',
         'rule': rule,
+    })
+
+
+def _card_search_params(request):
+    return {
+        'query': request.GET.get('q', '').strip(),
+        'game': request.GET.get('game', 'pokemon').strip() or 'pokemon',
+        'product_type': request.GET.get('product_type', 'singles').strip() or 'singles',
+    }
+
+
+def _run_card_search(query, game, product_type):
+    results = []
+    error_type = None
+    error_message = None
+
+    if query:
+        try:
+            results = search_cards(query, game=game, product_type=product_type)
+            if not results:
+                error_type = 'no_results'
+                error_message = f'No cards found for "{query}". Try a different name.'
+        except JustTCGKeyMissingError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+        except JustTCGRequestError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+
+    return results, error_type, error_message
+
+
+def _sell_price_card_params(request):
+    source = request.POST if request.method == 'POST' else request.GET
+    return {
+        'id': source.get('card_id', '').strip(),
+        'name': source.get('card_name', '').strip(),
+        'game': source.get('game', '').strip(),
+        'set': source.get('set_name', '').strip(),
+        'number': source.get('number', '').strip(),
+        'rarity': source.get('rarity', '').strip(),
+        'tcgplayerId': source.get('tcgplayer_id', '').strip(),
+        'is_sealed': source.get('is_sealed', '').lower() in ('1', 'true', 'yes'),
+    }
+
+
+@employee_required
+def sell_price_search(request):
+    params = _card_search_params(request)
+    results, error_type, error_message = _run_card_search(
+        params['query'],
+        params['game'],
+        params['product_type'],
+    )
+
+    return render(request, 'buylists/sell_price_search.html', {
+        **params,
+        'results': results,
+        'error_type': error_type,
+        'error_message': error_message,
+        'product_type_choices': [
+            ('singles', 'Singles'),
+            ('sealed', 'Sealed product'),
+            ('all', 'All'),
+        ],
+    })
+
+
+@employee_required
+def sell_price_detail(request):
+    card = _sell_price_card_params(request)
+    selected_printing = (
+        request.POST.get('printing', request.GET.get('printing', '')).strip()
+    )
+    error_type = None
+    error_message = None
+    nm_market = None
+    printing = ''
+    sell_prices = []
+    sealed_sell_price = None
+
+    if not card['id']:
+        error_type = 'request_failed'
+        error_message = 'No card was selected. Search again and pick a card.'
+
+    if card['id']:
+        condition = (
+            BuylistItem.CONDITION_SEALED
+            if card['is_sealed']
+            else BuylistItem.CONDITION_NM
+        )
+        try:
+            price_info = get_condition_price(
+                card['id'],
+                condition,
+                printing=selected_printing or None,
+            )
+            nm_market = price_info['price']
+            printing = price_info.get('printing') or ''
+            card['name'] = price_info['card_name'] or card['name']
+            card['set'] = price_info['set_name'] or card['set']
+            card['is_sealed'] = price_info.get('is_sealed', card['is_sealed'])
+
+            if card['is_sealed']:
+                sealed_sell_price = calculate_sealed_sell_price(nm_market)
+            else:
+                sell_prices = calculate_sell_prices(nm_market)
+        except JustTCGKeyMissingError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+        except JustTCGPriceMissingError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+        except JustTCGRequestError as exc:
+            error_type, error_message = _pricing_error_context(exc)
+
+    return render(request, 'buylists/sell_price_detail.html', {
+        'card': card,
+        'selected_printing': selected_printing or printing,
+        'printing_choices': ['Normal', 'Foil'],
+        'nm_market': nm_market,
+        'printing': printing,
+        'sell_prices': sell_prices,
+        'sealed_sell_price': sealed_sell_price,
+        'error_type': error_type,
+        'error_message': error_message,
     })
