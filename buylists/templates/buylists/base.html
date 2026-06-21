@@ -26,6 +26,9 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'buylists:customer_list' %}">Customers</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'buylists:sell_price_search' %}">Sell Pricing</a>
+                    </li>
                     {% if nav_can_view_reports %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'buylists:buylist_report' %}">Reports</a>

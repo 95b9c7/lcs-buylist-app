@@ -1,0 +1,127 @@
+{% extends "buylists/base.html" %}
+
+{% block title %}Sell Prices — {{ card.name|default:"Card" }}{% endblock %}
+
+{% block content %}
+<h1 class="h2 mb-1">In-Store Sell Prices</h1>
+<p class="text-muted mb-4">JustTCG market lookup · physical shelf pricing</p>
+
+{% if card.name %}
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <h2 class="h5 mb-0">{{ card.name }}</h2>
+            {% if card.is_sealed %}
+            <span class="badge bg-info text-dark">Sealed</span>
+            {% endif %}
+        </div>
+        <dl class="row mb-0 small">
+            <dt class="col-sm-3">Game</dt>
+            <dd class="col-sm-9">{{ card.game|default:"—" }}</dd>
+            <dt class="col-sm-3">Set</dt>
+            <dd class="col-sm-9">{{ card.set|default:"—" }}</dd>
+            <dt class="col-sm-3">Number</dt>
+            <dd class="col-sm-9">{{ card.number|default:"—" }}</dd>
+            <dt class="col-sm-3">Rarity</dt>
+            <dd class="col-sm-9">{{ card.rarity|default:"—" }}</dd>
+            {% if printing %}
+            <dt class="col-sm-3">Printing</dt>
+            <dd class="col-sm-9">{{ printing }}</dd>
+            {% endif %}
+            {% if nm_market is not None %}
+            <dt class="col-sm-3">{% if card.is_sealed %}Market price{% else %}Near Mint market{% endif %}</dt>
+            <dd class="col-sm-9 fw-semibold">${{ nm_market|floatformat:2 }}</dd>
+            {% endif %}
+        </dl>
+    </div>
+</div>
+{% endif %}
+
+{% if error_message %}
+<div class="alert alert-{% if error_type == 'missing_price' %}warning{% else %}danger{% endif %}">
+    {{ error_message }}
+</div>
+{% endif %}
+
+{% if card.id and not card.is_sealed %}
+<form method="get" class="card mb-4" id="sell-price-printing-form">
+    <div class="card-body">
+        <input type="hidden" name="card_id" value="{{ card.id }}">
+        <input type="hidden" name="card_name" value="{{ card.name }}">
+        <input type="hidden" name="game" value="{{ card.game }}">
+        <input type="hidden" name="set_name" value="{{ card.set }}">
+        <input type="hidden" name="number" value="{{ card.number }}">
+        <input type="hidden" name="rarity" value="{{ card.rarity }}">
+        <input type="hidden" name="tcgplayer_id" value="{{ card.tcgplayerId }}">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label for="printing" class="form-label">Printing</label>
+                <select class="form-select" id="printing" name="printing">
+                    <option value="">Any (prefer Normal)</option>
+                    {% for choice in printing_choices %}
+                    <option value="{{ choice }}" {% if selected_printing == choice %}selected{% endif %}>
+                        {{ choice }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Prices refresh when you change printing.</div>
+            </div>
+        </div>
+    </div>
+</form>
+{% endif %}
+
+{% if sell_prices %}
+<div class="card mb-4">
+    <div class="card-header">Sell prices by condition</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Condition</th>
+                        <th class="text-end">Condition factor</th>
+                        <th class="text-end">Adjusted base</th>
+                        <th class="text-end">Sell price (+10%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in sell_prices %}
+                    <tr>
+                        <td>{{ row.label }}</td>
+                        <td class="text-end text-muted">{{ row.factor|floatformat:2 }}</td>
+                        <td class="text-end text-muted">${{ row.adjusted_base|floatformat:2 }}</td>
+                        <td class="text-end fw-semibold fs-5">${{ row.sell_price|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% elif sealed_sell_price is not None %}
+<div class="card mb-4 border-success">
+    <div class="card-body text-center py-4">
+        <p class="text-muted mb-2">Sealed sell price (market + 10%)</p>
+        <p class="display-6 fw-semibold text-success mb-0">${{ sealed_sell_price|floatformat:2 }}</p>
+    </div>
+</div>
+{% endif %}
+
+<p class="mt-4">
+    <a href="{% url 'buylists:sell_price_search' %}" class="btn btn-outline-secondary">← Search another card</a>
+</p>
+
+{% if card.id and not card.is_sealed %}
+<script>
+(function () {
+    const form = document.getElementById('sell-price-printing-form');
+    const select = form && form.querySelector('[name="printing"]');
+    if (!select) return;
+    select.addEventListener('change', function () {
+        form.submit();
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

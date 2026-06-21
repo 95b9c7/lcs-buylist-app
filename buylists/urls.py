@@ -30,6 +30,11 @@ urlpatterns = [
         name='buylist_update_status',
     ),
     path(
+        'buylists/<int:pk>/mark-paid/',
+        views.buylist_mark_paid,
+        name='buylist_mark_paid',
+    ),
+    path(
         'buylists/<int:pk>/payment-choice/',
         views.buylist_update_payment_choice,
         name='buylist_update_payment_choice',
@@ -67,6 +72,8 @@ urlpatterns = [
     path('reports/overrides/', views.override_report, name='override_report'),
     path('reports/paid/', views.paid_report, name='paid_report'),
     path('reports/buylists/', views.buylist_report, name='buylist_report'),
+    path('sell-pricing/', views.sell_price_search, name='sell_price_search'),
+    path('sell-pricing/card/', views.sell_price_detail, name='sell_price_detail'),
     path('pricing-rules/', views.pricing_rule_list, name='pricing_rule_list'),
     path('pricing-rules/new/', views.pricing_rule_create, name='pricing_rule_create'),
     path(

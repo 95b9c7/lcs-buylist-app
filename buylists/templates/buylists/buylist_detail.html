@@ -14,6 +14,7 @@
             {% elif buylist.is_unlocked %}
             <span class="badge bg-warning text-dark">Unlocked</span>
             {% endif %}
+            {% if buylist.status == 'accepted' or buylist.status == 'paid' %}
             · Payment:
             {% if buylist.payment_choice == 'cash' %}
             <span class="badge bg-success">Cash (60%)</span>
@@ -21,6 +22,7 @@
             <span class="badge bg-info text-dark">Trade credit (70%)</span>
             {% else %}
             <span class="badge bg-secondary">Not selected</span>
+            {% endif %}
             {% endif %}
             · Updated {{ buylist.updated_at|date:"M j, Y g:i A" }}
         </p>
@@ -90,62 +92,87 @@
 {% if can_manage_settings %}
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="h6 text-muted mb-3">Buylist settings <span class="badge bg-secondary">Manager / Owner</span></h2>
-        <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="mb-0">
-            {% csrf_token %}
-            <div class="row g-3 align-items-start">
-                <div class="col-sm-6 col-lg-3">
-                    <label class="form-label" for="{{ status_form.status.id_for_label }}">{{ status_form.status.label }}</label>
-                    {{ status_form.status }}
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                    <label class="form-label" for="{{ status_form.payment_method.id_for_label }}">{{ status_form.payment_method.label }}</label>
-                    {{ status_form.payment_method }}
-                    {% if status_form.payment_method.help_text %}
-                    <div class="form-text">{{ status_form.payment_method.help_text }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                    <label class="form-label d-block" for="{{ status_form.amount_paid.id_for_label }}">{{ status_form.amount_paid.label }}</label>
-                    <div class="input-group">
-                        <span class="input-group-text">$</span>
-                        {{ status_form.amount_paid }}
-                    </div>
-                    {% if status_form.amount_paid.help_text %}
-                    <div class="form-text">{{ status_form.amount_paid.help_text }}</div>
-                    {% endif %}
-                </div>
-                <div class="col-sm-6 col-lg-3">
-                    <label class="form-label" aria-hidden="true">&nbsp;</label>
-                    <button type="submit" class="btn btn-outline-primary w-100">Update status</button>
-                </div>
-            </div>
-            {% for field in status_form %}
-            {% for error in field.errors %}
-            <div class="text-danger small mt-1">{{ error }}</div>
+        <h2 class="h6 text-muted mb-3">Buylist workflow <span class="badge bg-secondary">Manager / Owner</span></h2>
+
+        {% if status_actions %}
+        <p class="small text-muted mb-3">
+            Current phase: <strong>{{ buylist.get_status_display }}</strong>.
+            Use the next step when this buylist is ready to move forward.
+        </p>
+        <div class="d-flex flex-wrap gap-2 mb-0">
+            {% for action in status_actions %}
+            <form method="post" action="{% url 'buylists:buylist_update_status' pk=buylist.pk %}" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="new_status" value="{{ action.status }}">
+                <button type="submit" class="btn btn-{{ action.variant }}">
+                    {{ action.label }}
+                </button>
+            </form>
             {% endfor %}
-            {% endfor %}
-        </form>
-        <form method="post" action="{% url 'buylists:buylist_update_payment_choice' pk=buylist.pk %}" class="mt-4 pt-4 border-top">
+        </div>
+        {% elif buylist.status == 'paid' %}
+        <p class="text-muted small mb-0">This buylist is complete. No further status changes.</p>
+        {% else %}
+        <p class="text-muted small mb-0">No status actions available for this phase.</p>
+        {% endif %}
+
+        {% if payment_form %}
+        <form method="post" action="{% url 'buylists:buylist_update_payment_choice' pk=buylist.pk %}" class="mt-4 pt-4 border-top" id="buylist-payment-choice-form">
             {% csrf_token %}
+            <h3 class="h6 mb-3">Customer payment choice</h3>
+            <p class="small text-muted mb-3">
+                Choose cash (60%) or trade credit (70%). Line offers and totals update as soon as you select an option.
+            </p>
             <div class="row g-3 align-items-start">
                 <div class="col-sm-6 col-lg-4">
                     <label class="form-label" for="{{ payment_form.payment_choice.id_for_label }}">{{ payment_form.payment_choice.label }}</label>
                     {{ payment_form.payment_choice }}
                 </div>
-                <div class="col-sm-6 col-lg-3">
-                    <label class="form-label" aria-hidden="true">&nbsp;</label>
-                    <button type="submit" class="btn btn-outline-primary w-100">Save payment choice</button>
-                </div>
             </div>
         </form>
+        {% endif %}
+
+        {% if mark_paid_form %}
+        <form method="post" action="{% url 'buylists:buylist_mark_paid' pk=buylist.pk %}" class="mt-4 pt-4 border-top">
+            {% csrf_token %}
+            <h3 class="h6 mb-3">Record payment</h3>
+            <p class="small text-muted mb-3">
+                Enter how the store paid the customer, then mark this buylist as Paid.
+            </p>
+            <div class="row g-3 align-items-start">
+                <div class="col-sm-6 col-lg-4">
+                    <label class="form-label" for="{{ mark_paid_form.payment_method.id_for_label }}">{{ mark_paid_form.payment_method.label }}</label>
+                    {{ mark_paid_form.payment_method }}
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <label class="form-label d-block" for="{{ mark_paid_form.amount_paid.id_for_label }}">{{ mark_paid_form.amount_paid.label }}</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        {{ mark_paid_form.amount_paid }}
+                    </div>
+                    {% if mark_paid_form.amount_paid.help_text %}
+                    <div class="form-text">{{ mark_paid_form.amount_paid.help_text }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-sm-6 col-lg-4">
+                    <label class="form-label" aria-hidden="true">&nbsp;</label>
+                    <button type="submit" class="btn btn-success w-100">Mark as Paid</button>
+                </div>
+            </div>
+            {% for field in mark_paid_form %}
+            {% for error in field.errors %}
+            <div class="text-danger small mt-1">{{ error }}</div>
+            {% endfor %}
+            {% endfor %}
+        </form>
+        {% endif %}
     </div>
 </div>
 {% else %}
-<p class="text-muted small mb-4">Status and payment settings can be changed by a Manager or Owner.</p>
+<p class="text-muted small mb-4">Workflow and payment settings can be changed by a Manager or Owner.</p>
 {% endif %}
 
-{% if buylist.is_paid %}
+{% if show_payment_recorded %}
 <div class="card mb-4 border-success">
     <div class="card-body">
         <h2 class="h6 text-success mb-3">Payment recorded</h2>
@@ -296,4 +323,21 @@
 <p class="mt-4">
     <a href="{% url 'buylists:dashboard' %}" class="btn btn-outline-secondary">← Back to Dashboard</a>
 </p>
+
+{% if payment_form %}
+<script>
+(function () {
+    const form = document.getElementById('buylist-payment-choice-form');
+    const select = form && form.querySelector('[name="payment_choice"]');
+    if (!select) return;
+    select.addEventListener('change', function () {
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            form.submit();
+        }
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}
